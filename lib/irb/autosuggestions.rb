@@ -1,10 +1,8 @@
 # frozen_string_literal: true
 
-require_relative 'autosuggestions/version'
+require 'reline'
 
-module Irb
-  module Autosuggestions
-    class Error < StandardError; end
-    # Your code goes here...
-  end
-end
+require_relative 'autosuggestions/version'
+require_relative 'autosuggestions/line_editor_patch'
+
+Reline::LineEditor.prepend(Irb::Autosuggestions::LineEditorPatch)
