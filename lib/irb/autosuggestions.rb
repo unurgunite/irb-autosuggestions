@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "autosuggestions/version"
+require_relative 'autosuggestions/version'
 
 module Irb
   module Autosuggestions
