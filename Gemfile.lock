@@ -12,7 +12,7 @@ GEM
     docscribe (1.3.1)
       parser (>= 3.3)
       prism (~> 1.8)
-    io-console (0.6.0)
+    io-console (0.8.2)
     json (2.19.5)
     language_server-protocol (3.17.0.5)
     lint_roller (1.1.0)
@@ -25,12 +25,10 @@ GEM
     racc (1.8.1)
     rainbow (3.1.1)
     rake (13.4.2)
-    rbs (4.0.2)
+    rbs (3.6.1)
       logger
-      prism (>= 1.6.0)
-      tsort
     regexp_parser (2.12.0)
-    reline (0.3.2)
+    reline (0.6.3)
       io-console (~> 0.5)
     rspec (3.13.2)
       rspec-core (~> 3.13.0)
@@ -69,7 +67,6 @@ GEM
       lint_roller
       rubocop (>= 1.72.0)
     ruby-progressbar (1.13.0)
-    tsort (0.2.0)
     unicode-display_width (3.2.0)
       unicode-emoji (~> 4.1)
     unicode-emoji (4.2.0)
@@ -77,6 +74,7 @@ GEM
 
 PLATFORMS
   arm64-darwin-25
+  x86_64-linux
 
 DEPENDENCIES
   docscribe
@@ -91,4 +89,4 @@ DEPENDENCIES
   yard (>= 0.9.38)
 
 BUNDLED WITH
-  4.0.12
+   2.5.23
