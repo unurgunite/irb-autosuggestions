@@ -6,9 +6,15 @@ module Irb
       RESET = "\e[0m"
       FAINT = "\e[2m"
 
-      # Method documentation.
+      # Render autosuggestion ghost text after the cursor.
       #
-      # @return [Object]
+      # Clears stale ghost artifacts from previous renders, then looks up a
+      # matching history entry.  If found, writes the remainder of the
+      # suggested line in faint text at the cursor position and draws any
+      # extra suggested lines below the buffer, right-aligned to the prompt
+      # width so they appear where real continuation lines would.
+      #
+      # @return [Object] the return value of the original `render`
       def render(...)
         result = super
 
@@ -74,10 +80,15 @@ module Irb
         result
       end
 
-      # Method documentation.
+      # Intercept right-arrow to accept the full suggestion.
       #
-      # @param [Object] key Param documentation.
-      # @return [Object]
+      # When the user presses → while a suggestion is shown, the remaining
+      # lines of the suggestion are inserted into the buffer (appending to
+      # the current line or inserting new lines as needed).  After
+      # accepting, the suggestion is cleared and the display is refreshed.
+      #
+      # @param key [Reline::Key] the key event
+      # @return [Object] the return value of the original `input_key`
       def input_key(key)
         if right_arrow?(key)
           buffer = current_buffer
@@ -120,40 +131,52 @@ module Irb
 
       private
 
-      # Method documentation.
+      # Find the first history entry that matches the buffer.
+      #
+      # Scans `Reline::HISTORY` in reverse (most recent first) for an entry
+      # that is not the current buffer itself and satisfies
+      # {#match_suggestion?}.
       #
       # @private
-      # @param [Object] buffer Param documentation.
-      # @return [Object]
+      # @param buffer [String] the current whole-buffer content
+      # @return [String, nil] a matching history entry, or `nil`
       def find_suggestion(buffer)
         Reline::HISTORY.reverse.find do |h|
           h != whole_buffer && match_suggestion?(buffer, h)
         end
       end
 
-      # Method documentation.
+      # Test whether a key event represents a right-arrow press.
+      #
+      # Reline represents arrow keys as objects with a `method_symbol`
+      # attribute; the right arrow corresponds to `:ed_next_char`.
       #
       # @private
-      # @param [Object] key Param documentation.
-      # @return [Object]
+      # @param key [Reline::Key] the key event to test
+      # @return [Boolean]
       def right_arrow?(key)
         key.respond_to?(:method_symbol) && key.method_symbol == :ed_next_char
       end
 
-      # Method documentation.
+      # Return the content of the line the cursor is on.
       #
       # @private
-      # @return [Object]
+      # @return [String]
       def current_buffer
         @buffer_of_lines[@line_index] || ''
       end
 
-      # Method documentation.
+      # Lenient line-by-line match between buffer and suggestion.
+      #
+      # Compares buffer lines to suggestion lines in order.  The last buffer
+      # line is matched leniently: if it is whitespace-only it accepts any
+      # suggestion line (for auto-indentation); otherwise a stripped
+      # prefix-check is tried when a strict `start_with?` fails.
       #
       # @private
-      # @param [Object] buffer Param documentation.
-      # @param [Object] suggestion Param documentation.
-      # @return [Object]
+      # @param buffer [String] the current buffer content
+      # @param suggestion [String] a history entry to test
+      # @return [Boolean]
       def match_suggestion?(buffer, suggestion)
         buf_lines = buffer.split("\n", -1)
         sug_lines = suggestion.split("\n", -1)
