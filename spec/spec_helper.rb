@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'irb'
 require 'irb/autosuggestions'
 
 RSpec.configure do |config|

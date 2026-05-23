@@ -136,6 +136,67 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
     it 'returns super result' do
       expect(editor.send(:render)).to eq(:super_result)
     end
+
+    context 'when disabled via IRB.conf' do
+      around do |example|
+        original = IRB.conf[described_class::CONFIG_KEY]
+        IRB.conf[described_class::CONFIG_KEY] = false
+        example.run
+      ensure
+        IRB.conf[described_class::CONFIG_KEY] = original
+      end
+
+      it 'returns super result without ghost' do
+        expect(editor.send(:render)).to eq(:super_result)
+      end
+    end
+  end
+
+  describe '#enabled?' do
+    around do |example|
+      original_env = ENV.fetch(described_class::ENV_KEY, nil)
+      original_conf = IRB.conf[described_class::CONFIG_KEY]
+      example.run
+    ensure
+      ENV[described_class::ENV_KEY] = original_env
+      IRB.conf[described_class::CONFIG_KEY] = original_conf
+    end
+
+    it 'is true by default' do
+      ENV.delete(described_class::ENV_KEY)
+      IRB.conf.delete(described_class::CONFIG_KEY)
+      expect(editor.send(:enabled?)).to be true
+    end
+
+    it 'returns false when IRB.conf key is false' do
+      ENV.delete(described_class::ENV_KEY)
+      IRB.conf[described_class::CONFIG_KEY] = false
+      expect(editor.send(:enabled?)).to be false
+    end
+
+    it 'returns true when IRB.conf key is true' do
+      ENV.delete(described_class::ENV_KEY)
+      IRB.conf[described_class::CONFIG_KEY] = true
+      expect(editor.send(:enabled?)).to be true
+    end
+
+    it 'returns false when env var is 0' do
+      IRB.conf[described_class::CONFIG_KEY] = true
+      ENV[described_class::ENV_KEY] = '0'
+      expect(editor.send(:enabled?)).to be false
+    end
+
+    it 'returns true when env var is 1' do
+      IRB.conf[described_class::CONFIG_KEY] = true
+      ENV[described_class::ENV_KEY] = '1'
+      expect(editor.send(:enabled?)).to be true
+    end
+
+    it 'env var overrides IRB.conf' do
+      IRB.conf[described_class::CONFIG_KEY] = false
+      ENV[described_class::ENV_KEY] = '1'
+      expect(editor.send(:enabled?)).to be true
+    end
   end
 
   describe 'constant values' do
