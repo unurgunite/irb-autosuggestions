@@ -24,6 +24,8 @@ module Irb
 
       def render(...)
         result = super
+        output = Reline.core.instance_variable_get(:@output)
+        output.write("\e[K")
 
         buffer = whole_buffer
         return result if buffer.empty?
@@ -38,7 +40,6 @@ module Irb
         current_ghost = lines.first
         extra_lines = lines.drop(1)
 
-        output = Reline.core.instance_variable_get(:@output)
         prompt_width = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
 
         output.write("#{GRAY}#{current_ghost}#{RESET}") unless current_ghost.empty?
@@ -57,14 +58,6 @@ module Irb
         result
       end
 
-      def accept_suggestion(suggestion)
-        sug_lines = suggestion.split("\n")
-        @buffer_of_lines = sug_lines
-        @line_index = sug_lines.size - 1
-        @byte_pointer = sug_lines.last.bytesize
-        rerender
-      end
-
       def right_arrow?(key)
         key.respond_to?(:method_symbol) &&
           key.method_symbol == :ed_next_char
@@ -74,6 +67,14 @@ module Irb
         Reline::HISTORY.reverse.find do |h|
           h != buffer && h.start_with?(buffer)
         end
+      end
+
+      def accept_suggestion(suggestion)
+        sug_lines = suggestion.split("\n")
+        @buffer_of_lines = sug_lines
+        @line_index = sug_lines.size - 1
+        @byte_pointer = sug_lines.last.bytesize
+        rerender
       end
     end
   end
