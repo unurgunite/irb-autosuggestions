@@ -107,7 +107,7 @@ module Irb
         output.flush
       end
 
-      # Method documentation.
+      # Writes extra ghost lines below the current line, aligned to prompt width.
       #
       # @private
       # @param [Object] output terminal output stream
