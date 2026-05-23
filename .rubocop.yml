@@ -13,5 +13,8 @@ Style/DoubleNegation:
 Style/RedundantFetchBlock:
   Enabled: false
 
+Metrics/ModuleLength:
+  Max: 105
+
 Gemspec/DevelopmentDependencies:
   EnforcedStyle: gemspec
