@@ -13,6 +13,7 @@ No need to explain. Fish-like autosuggestions for IRB — ghost text from histor
     * [Contents](#contents)
     * [Installation](#installation)
     * [Usage](#usage)
+    * [Configuration](#configuration)
         * [How it works](#how-it-works)
     * [Development](#development)
     * [License](#license)
@@ -42,6 +43,22 @@ irb(main):003> end            <- "d" in gray
 ```
 
 Press **right arrow** (`->`) to accept the full multiline suggestion.
+
+## Configuration
+
+Autosuggestions are enabled by default. To disable:
+
+`~/.irbrc`:
+
+```ruby
+IRB.conf[:USE_AUTOSUGGESTIONS] = false
+```
+
+Or via environment variable:
+
+```sh
+export IRB_AUTOSUGGESTIONS=0
+```
 
 ### How it works
 
