@@ -23,7 +23,7 @@ jobs:
           bundler-cache: true
 
       - name: Docscribe (check docs are up-to-date)
-        run: bundle exec docscribe
+        run: bundle exec docscribe --rbs-collection lib/
 
       - name: RuboCop (self‑check)
         run: bundle exec rubocop
