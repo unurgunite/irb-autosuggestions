@@ -1,0 +1,5 @@
+module Irb
+  module Autosuggestions
+    VERSION: String
+  end
+end
