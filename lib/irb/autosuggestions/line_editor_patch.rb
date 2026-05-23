@@ -35,7 +35,10 @@ module Irb
         result = super
         Reline.core.instance_variable_get(:@output).write("\e[J")
 
-        ghost = ghost_for(whole_buffer)
+        buffer = whole_buffer
+        return result if buffer.empty?
+
+        ghost = ghost_for(buffer)
         return result unless ghost
 
         render_ghost(ghost)
