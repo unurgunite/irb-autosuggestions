@@ -9,7 +9,7 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
       obj.define_singleton_method(:current_line) do
         instance_variable_get(:@buffer_of_lines)[
           instance_variable_get(:@line_index)
-        ] || ""
+        ] || ''
       end
       obj.define_singleton_method(:input_key) { |_key| :original }
       obj.define_singleton_method(:rerender) { nil }

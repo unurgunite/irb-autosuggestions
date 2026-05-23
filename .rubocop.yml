@@ -13,6 +13,10 @@ Style/DoubleNegation:
 Style/RedundantFetchBlock:
   Enabled: false
 
+Naming/FileName:
+  Exclude:
+    - lib/irb-autosuggestions.rb
+
 Metrics/ModuleLength:
   Max: 110
 
