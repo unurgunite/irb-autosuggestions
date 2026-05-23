@@ -1,6 +1,15 @@
 # frozen_string_literal: true
 
-require 'irb'
+unless defined?(IRB)
+  module IRB
+    # stub for Ruby 4.0
+    @conf = {}
+    def self.conf
+      @conf
+    end
+  end
+end
+
 require 'irb/autosuggestions'
 
 RSpec.configure do |config|
