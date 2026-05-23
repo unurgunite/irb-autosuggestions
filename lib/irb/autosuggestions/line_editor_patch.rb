@@ -25,7 +25,7 @@ module Irb
       def render(...)
         result = super
         output = Reline.core.instance_variable_get(:@output)
-        output.write("\e[K")
+        output.write("\e[J")
 
         buffer = whole_buffer
         return result if buffer.empty?
