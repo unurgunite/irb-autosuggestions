@@ -1,8 +1,5 @@
 module Irb
   module Autosuggestions
     VERSION: String
-
-    def self?.enabled?: () -> bool
-    def self?.enabled=: (bool value) -> bool
   end
 end
