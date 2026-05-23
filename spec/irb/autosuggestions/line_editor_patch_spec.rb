@@ -13,11 +13,16 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
         buf[instance_variable_get(:@line_index)] = line
         instance_variable_set(:@buffer_of_lines, buf)
       end
+      obj.define_singleton_method(:render) { :super_result }
       obj.singleton_class.prepend(described_class)
       obj.instance_variable_set(:@buffer_of_lines, [''])
       obj.instance_variable_set(:@line_index, 0)
       obj.instance_variable_set(:@byte_pointer, 0)
     end
+  end
+
+  after do
+    Irb::Autosuggestions.enabled = nil
   end
 
   describe '#line_matches?' do
@@ -124,6 +129,17 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
     end
   end
 
+  describe '#enabled?' do
+    it 'returns true by default' do
+      expect(Irb::Autosuggestions.enabled?).to be(true)
+    end
+
+    it 'returns false when set to false' do
+      Irb::Autosuggestions.enabled = false
+      expect(Irb::Autosuggestions.enabled?).to be(false)
+    end
+  end
+
   describe '#input_key with right arrow accept' do
     let(:key) { double(method_symbol: :ed_next_char) }
 
@@ -168,6 +184,30 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
       editor.instance_variable_set(:@autosuggest_suggestion, 'suggestion')
       editor.send(:input_key, non_arrow)
       expect(editor.instance_variable_get(:@autosuggest_suggestion)).to eq('suggestion')
+    end
+
+    context 'when autosuggestions are disabled' do
+      before { Irb::Autosuggestions.enabled = false }
+
+      it 'passes through for right arrow' do
+        expect(editor.send(:input_key, key)).to eq(:original)
+      end
+
+      it 'does not clear suggestion' do
+        editor.instance_variable_set(:@autosuggest_suggestion, 'suggestion')
+        editor.send(:input_key, key)
+        expect(editor.instance_variable_get(:@autosuggest_suggestion)).to eq('suggestion')
+      end
+    end
+  end
+
+  describe '#render' do
+    context 'when autosuggestions are disabled' do
+      before { Irb::Autosuggestions.enabled = false }
+
+      it 'returns super without rendering ghost' do
+        expect(editor.send(:render)).to eq(:super_result)
+      end
     end
   end
 

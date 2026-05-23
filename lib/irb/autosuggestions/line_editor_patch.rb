@@ -12,6 +12,8 @@ module Irb
       # @param [Object] key key event from Reline
       # @return [Object]
       def input_key(key)
+        return super unless Irb::Autosuggestions.enabled?
+
         super unless key.respond_to?(:method_symbol) && key.method_symbol == :ed_next_char && process_arrow
       end
 
@@ -22,6 +24,8 @@ module Irb
       # @private
       # @return [Object]
       def render(...)
+        return super unless Irb::Autosuggestions.enabled?
+
         result = super
         clear_old_ghost
         return result if whole_buffer.strip.empty?
@@ -37,7 +41,7 @@ module Irb
       # Clears previously rendered ghost text from the terminal with ANSI escapes.
       #
       # @private
-      # @return [Object]
+      # @return [void]
       def clear_old_ghost
         output = Reline.core.instance_variable_get(:@output)
         if @autosuggest_ghost_length
@@ -71,7 +75,7 @@ module Irb
       # Accepts the remaining suggestion text into the buffer on right arrow.
       #
       # @private
-      # @return [Boolean]
+      # @return [Boolean, nil]
       def process_arrow
         suggestion = @autosuggest_suggestion
         return unless suggestion && suggestion != whole_buffer && match_suggestion?(whole_buffer, suggestion)
@@ -90,7 +94,7 @@ module Irb
       # @private
       # @param [String] current_ghost ghost text for the current line
       # @param [Array<String>] extra_lines ghost lines beyond the current line
-      # @return [Object]
+      # @return [void]
       def render_ghost(current_ghost, extra_lines)
         output = Reline.core.instance_variable_get(:@output)
         output.write("\e[s")
@@ -103,12 +107,12 @@ module Irb
         output.flush
       end
 
-      # Writes extra ghost lines below the current line, aligned to prompt width.
+      # Method documentation.
       #
       # @private
       # @param [Object] output terminal output stream
       # @param [Array<String>] lines ghost lines to render
-      # @return [Object]
+      # @return [void]
       def write_extra_lines(output, lines)
         return unless lines.any?
 
@@ -165,7 +169,7 @@ module Irb
       # @private
       # @param [String] buffer current line content
       # @param [String] remaining text from suggestion after the buffer match
-      # @return [Object]
+      # @return [void]
       def accept_remaining(buffer, remaining)
         if remaining.start_with?("\n")
           remaining = remaining[1..].to_s

@@ -14,7 +14,7 @@ Style/RedundantFetchBlock:
   Enabled: false
 
 Metrics/ModuleLength:
-  Max: 105
+  Max: 110
 
 Gemspec/DevelopmentDependencies:
   EnforcedStyle: gemspec
