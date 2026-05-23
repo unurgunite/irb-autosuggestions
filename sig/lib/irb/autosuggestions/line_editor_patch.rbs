@@ -1,6 +1,7 @@
 module Irb
   module Autosuggestions
     module LineEditorPatch
+      GRAY: String
       RESET: String
       FAINT: String
 
