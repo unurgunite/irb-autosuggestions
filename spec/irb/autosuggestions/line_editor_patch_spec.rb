@@ -6,6 +6,11 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
       obj.define_singleton_method(:whole_buffer) do
         instance_variable_get(:@buffer_of_lines).join("\n")
       end
+      obj.define_singleton_method(:current_line) do
+        instance_variable_get(:@buffer_of_lines)[
+          instance_variable_get(:@line_index)
+        ] || ""
+      end
       obj.define_singleton_method(:input_key) { |_key| :original }
       obj.define_singleton_method(:rerender) { nil }
       obj.define_singleton_method(:set_current_line) do |line|
@@ -61,10 +66,6 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
   describe '#input_key with right arrow accept' do
     let(:key) { double(method_symbol: :ed_next_char) }
 
-    before do
-      editor.instance_variable_set(:@buffer_of_lines, ['def '])
-    end
-
     it 'calls super for non-right-arrow keys' do
       non_arrow = double(method_symbol: :ed_prev_char)
       expect(editor.send(:input_key, non_arrow)).to eq(:original)
@@ -85,13 +86,17 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
         original.each { |h| Reline::HISTORY << h }
       end
 
-      it 'accepts the suggestion on right arrow' do
+      before do
+        editor.instance_variable_set(:@buffer_of_lines, ['def '])
+      end
+
+      it 'accepts the full multiline suggestion' do
         editor.send(:input_key, key)
         expect(editor.instance_variable_get(:@buffer_of_lines))
           .to eq(['def foo', '  :foo', 'end'])
       end
 
-      it 'sets byte_pointer to the last line size' do
+      it 'sets byte_pointer to the last suggestion line size' do
         editor.send(:input_key, key)
         expect(editor.instance_variable_get(:@byte_pointer)).to eq(3)
       end
@@ -104,23 +109,18 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
       editor.instance_variable_set(:@line_index, 0)
     end
 
-    it 'sets current line to the first suggestion line' do
-      editor.send(:accept_suggestion, "def foo\n  :foo\nend")
-      expect(editor.instance_variable_get(:@buffer_of_lines)[0]).to eq('def foo')
-    end
-
-    it 'inserts remaining suggestion lines into the buffer' do
+    it 'replaces the buffer with suggestion lines' do
       editor.send(:accept_suggestion, "def foo\n  :foo\nend")
       expect(editor.instance_variable_get(:@buffer_of_lines))
         .to eq(['def foo', '  :foo', 'end'])
     end
 
-    it 'increments line_index for each inserted line' do
+    it 'sets line_index to the last line' do
       editor.send(:accept_suggestion, "def foo\n  :foo\nend")
       expect(editor.instance_variable_get(:@line_index)).to eq(2)
     end
 
-    it 'sets byte_pointer to the last suggestion line size' do
+    it 'sets byte_pointer to the last line size' do
       editor.send(:accept_suggestion, "def foo\n  :foo\nend")
       expect(editor.instance_variable_get(:@byte_pointer)).to eq(3)
     end

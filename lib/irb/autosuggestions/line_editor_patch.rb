@@ -23,7 +23,6 @@ module Irb
       private
 
       def render(...)
-        clear_extra_ghost
         result = super
 
         buffer = whole_buffer
@@ -40,51 +39,28 @@ module Irb
         extra_lines = lines.drop(1)
 
         output = Reline.core.instance_variable_get(:@output)
+        prompt_width = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
 
-        if current_ghost.empty?
-          if extra_lines.any?
-            output.write("\e[s")
-            extra_lines.each do |line|
-              output.write("\n#{GRAY}#{line}#{RESET}")
-            end
-            @autosuggest_extra_count = extra_lines.size
-            output.write("\e[u")
-          end
-        else
-          output.write("#{GRAY}#{current_ghost}#{RESET}")
-          output.write("\e[#{current_ghost.length}D")
+        output.write("#{GRAY}#{current_ghost}#{RESET}") unless current_ghost.empty?
 
-          if extra_lines.any?
-            output.write("\e[s")
-            extra_lines.each do |line|
-              output.write("\n#{GRAY}#{line}#{RESET}")
-            end
-            @autosuggest_extra_count = extra_lines.size
-            output.write("\e[u")
-          end
+        extra_lines.each do |line|
+          output.write("\n\e[K")
+          output.write("\e[#{prompt_width}C") if prompt_width.positive?
+          output.write("#{GRAY}#{line}#{RESET}")
         end
+
+        output.write("\e[#{extra_lines.size}A") if extra_lines.size.positive?
+        output.write("\e[0G")
+        output.write("\e[#{prompt_width + (@buffer_of_lines[@line_index] || '').length}C")
 
         output.flush
         result
       end
 
-      def clear_extra_ghost
-        return unless @autosuggest_extra_count&.positive?
-
-        output = Reline.core.instance_variable_get(:@output)
-        output.write("\e[s")
-        @autosuggest_extra_count.times { output.write("\n\e[K") }
-        output.write("\e[#{@autosuggest_extra_count}A\e[u")
-        @autosuggest_extra_count = nil
-      end
-
       def accept_suggestion(suggestion)
         sug_lines = suggestion.split("\n")
-        set_current_line(sug_lines.first)
-        sug_lines.drop(1).each do |line|
-          @buffer_of_lines.insert(@line_index + 1, line)
-          @line_index += 1
-        end
+        @buffer_of_lines = sug_lines
+        @line_index = sug_lines.size - 1
         @byte_pointer = sug_lines.last.bytesize
         rerender
       end
