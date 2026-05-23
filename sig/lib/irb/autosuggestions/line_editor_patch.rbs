@@ -1,26 +1,22 @@
 module Irb
   module Autosuggestions
     module LineEditorPatch
+      GRAY: String
       RESET: String
-      FAINT: String
 
-      @autosuggest_suggestion: String?
-      @autosuggest_ghost_length: Integer?
-      @autosuggest_extra_count: Integer?
+      @buffer_of_lines: Array[String]
+      @byte_pointer: Integer
+      @line_index: Integer
 
       def input_key: (untyped key) -> untyped
-
       def render: (*untyped) -> untyped
-      def clear_old_ghost: -> void
-      def resolve_ghost: -> (Array[String] | nil)
-      def process_arrow: -> (true | nil)
-      def render_ghost: (String current_ghost, Array[String] extra_lines) -> void
-      def write_extra_lines: (untyped output, Array[String] lines) -> void
+      def right_arrow?: (untyped key) -> bool
+      def ghost_for: (String buffer) -> (String | nil)
+      def render_ghost: (String ghost) -> void
+      def write_extra_ghost_lines: (Array[String] lines) -> void
+      def restore_cursor_after: (Array[String] lines) -> void
       def find_suggestion: (String buffer) -> (String | nil)
-      def match_suggestion?: (String buffer, String suggestion) -> bool
-      def line_matches?: (String buf_line, String sug_line, bool last) -> bool
-      def accept_remaining: (String buffer, String remaining) -> void
-      def append_lines: (Array[String] lines) -> (Array[String])
+      def accept_suggestion: (String suggestion) -> void
     end
   end
 end

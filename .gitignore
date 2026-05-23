@@ -12,3 +12,4 @@
 .idea
 .DS_Store
 .gem_rbs_collection
+*.gem

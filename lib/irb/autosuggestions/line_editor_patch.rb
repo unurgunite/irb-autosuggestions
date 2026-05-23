@@ -2,192 +2,146 @@
 
 module Irb
   module Autosuggestions
-    # Patches Reline::LineEditor to display fish-like autosuggestions.
+    # Patches Reline::LineEditor to display fish-like autosuggestions from history.
     module LineEditorPatch
+      GRAY = "\e[90m"
       RESET = "\e[0m"
-      FAINT = "\e[2m"
 
-      # Handles right arrow key to accept the current autosuggestion.
+      # Intercepts key input to accept autosuggestions on right arrow.
       #
-      # @param [Object] key key event from Reline
-      # @return [Object]
+      # @param [Object] key A Reline key event.
+      # @return [Object] Returns +super+ for non-right-arrow keys, +nil+ after accept.
       def input_key(key)
-        super unless key.respond_to?(:method_symbol) && key.method_symbol == :ed_next_char && process_arrow
+        if right_arrow?(key)
+          buffer = whole_buffer
+          suggestion = find_suggestion(buffer)
+
+          if suggestion && suggestion != buffer
+            accept_suggestion(suggestion)
+            return
+          end
+        end
+
+        super
       end
 
       private
 
-      # Overrides Reline render to display ghost text alongside the current buffer.
+      # Injects ghost text into terminal output after Reline finishes rendering.
       #
       # @private
-      # @return [Object]
+      # @return [Object] The result of +super+.
       def render(...)
         result = super
-        clear_old_ghost
-        return result if whole_buffer.strip.empty?
+        Reline.core.instance_variable_get(:@output).write("\e[J")
 
-        ghost_lines = resolve_ghost
-        return result unless ghost_lines
+        buffer = whole_buffer
+        return result if buffer.empty?
 
-        current_ghost, *extra_lines = ghost_lines
-        render_ghost(current_ghost, extra_lines)
+        ghost = ghost_for(buffer)
+        return result unless ghost
+
+        render_ghost(ghost)
         result
       end
 
-      # Clears previously rendered ghost text from the terminal with ANSI escapes.
+      # Checks if a key event is a right arrow press.
       #
       # @private
-      # @return [Object]
-      def clear_old_ghost
-        output = Reline.core.instance_variable_get(:@output)
-        if @autosuggest_ghost_length
-          output.write("\e[K")
-          @autosuggest_ghost_length = nil
-        end
-        return unless @autosuggest_extra_count&.positive?
-
-        output.write("\e[s")
-        @autosuggest_extra_count.times { output.write("\n\e[K") }
-        output.write("\e[#{@autosuggest_extra_count}A\e[u")
-        @autosuggest_extra_count = nil
-      end
-
-      # Matches the current buffer against history and returns the ghost portion.
-      #
-      # @private
-      # @return [Array<String>, nil]
-      def resolve_ghost
-        @autosuggest_suggestion = find_suggestion(whole_buffer) if @autosuggest_suggestion.nil?
-        if @autosuggest_suggestion &&
-           match_suggestion?(whole_buffer, @autosuggest_suggestion) &&
-           @autosuggest_suggestion != whole_buffer
-          ghost = @autosuggest_suggestion[whole_buffer.size..]
-          ghost.lines.map(&:chomp) unless ghost.to_s.empty?
-        else
-          @autosuggest_suggestion = nil
-        end
-      end
-
-      # Accepts the remaining suggestion text into the buffer on right arrow.
-      #
-      # @private
+      # @param [Object] key A Reline key event.
       # @return [Boolean]
-      def process_arrow
-        suggestion = @autosuggest_suggestion
-        return unless suggestion && suggestion != whole_buffer && match_suggestion?(whole_buffer, suggestion)
-
-        remaining = suggestion[whole_buffer.size..]
-        return unless remaining && !remaining.empty?
-
-        accept_remaining(@buffer_of_lines[@line_index] || '', remaining)
-        @autosuggest_suggestion = nil
-        rerender
-        true
+      def right_arrow?(key)
+        key.respond_to?(:method_symbol) &&
+          key.method_symbol == :ed_next_char
       end
 
-      # Writes ghost text inline and extra lines below the current terminal line.
+      # Computes the ghost text for a given buffer by finding the matching history entry.
       #
       # @private
-      # @param [String] current_ghost ghost text for the current line
-      # @param [Array<String>] extra_lines ghost lines beyond the current line
-      # @return [Object]
-      def render_ghost(current_ghost, extra_lines)
+      # @param [String] buffer The current whole buffer.
+      # @return [String, nil] The remaining text of the suggestion, or nil.
+      def ghost_for(buffer)
+        suggestion = find_suggestion(buffer)
+        return unless suggestion
+
+        ghost = suggestion[buffer.size..]
+        return if ghost.nil? || ghost.empty?
+
+        ghost
+      end
+
+      # Writes the ghost text (inline + extra lines) to terminal output.
+      #
+      # @private
+      # @param [String] ghost The full ghost text (may contain newlines).
+      # @return [void]
+      def render_ghost(ghost)
+        lines = ghost.split("\n")
+
+        Reline.core.instance_variable_get(:@output).write("#{GRAY}#{lines.first}#{RESET}") unless lines.first.empty?
+
+        write_extra_ghost_lines(lines.drop(1))
+        restore_cursor_after(lines)
+
+        Reline.core.instance_variable_get(:@output).flush
+      end
+
+      # Writes extra ghost lines below the current buffer line with prompt-width alignment.
+      #
+      # @private
+      # @param [Array<String>] lines Extra ghost lines (excluding the first inline line).
+      # @return [void]
+      def write_extra_ghost_lines(lines)
+        return if lines.empty?
+
+        prompt_width = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
         output = Reline.core.instance_variable_get(:@output)
-        output.write("\e[s")
-        unless current_ghost.empty?
-          output.write("#{FAINT}#{current_ghost}#{RESET}")
-          @autosuggest_ghost_length = current_ghost.length
+
+        lines.each do |line|
+          output.write("\n\e[K")
+          output.write("\e[#{prompt_width}C") if prompt_width.positive?
+          output.write("#{GRAY}#{line}#{RESET}")
         end
-        write_extra_lines(output, extra_lines)
-        output.write("\e[u")
-        output.flush
       end
 
-      # Writes extra ghost lines below the current line, aligned to prompt width.
+      # Restores the cursor to the end of the buffer after ghost rendering.
       #
       # @private
-      # @param [Object] output terminal output stream
-      # @param [Array<String>] lines ghost lines to render
-      # @return [Object]
-      def write_extra_lines(output, lines)
-        return unless lines.any?
+      # @param [Array<String>] lines The ghost split into lines.
+      # @return [void]
+      def restore_cursor_after(lines)
+        extra_count = lines.size - 1
+        prompt_width = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
+        pos = prompt_width + (@buffer_of_lines[@line_index] || '').length
+        output = Reline.core.instance_variable_get(:@output)
 
-        pw = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
-        lines.each do |gl|
-          output.write("\n")
-          output.write("\e[#{pw}C") if pw.positive?
-          output.write("#{FAINT}#{gl}#{RESET}")
-        end
-        @autosuggest_extra_count = lines.size
+        output.write("\e[#{extra_count}A") if extra_count.positive?
+        output.write("\e[0G")
+        output.write("\e[#{pos}C")
       end
 
-      # Searches Reline history for the most recent matching suggestion.
+      # Finds the most recent history entry that starts with the given buffer.
       #
       # @private
-      # @param [String] buffer current buffer content
-      # @return [String, nil]
+      # @param [String] buffer The current whole buffer.
+      # @return [String, nil] The matching history entry, or nil.
       def find_suggestion(buffer)
         Reline::HISTORY.reverse.find do |h|
-          h != whole_buffer && match_suggestion?(buffer, h)
+          h != buffer && h.start_with?(buffer)
         end
       end
 
-      # Checks whether the buffer lines match the suggestion lines positionally.
+      # Replaces the entire buffer with the accepted suggestion and triggers a rerender.
       #
       # @private
-      # @param [String] buffer current buffer content
-      # @param [String] suggestion possible suggestion from history
-      # @return [Boolean]
-      def match_suggestion?(buffer, suggestion)
-        buf_lines = buffer.split("\n", -1)
-        sug_lines = suggestion.split("\n", -1)
-        buf_lines.size <= sug_lines.size &&
-          buf_lines.zip(sug_lines).each_with_index.all? do |(b, s), i|
-            s && line_matches?(b, s, i == buf_lines.size - 1)
-          end
-      end
-
-      # Checks if a single buffer line matches a suggestion line (lenient on last).
-      #
-      # @private
-      # @param [String] buf_line a line from the current buffer
-      # @param [String] sug_line the corresponding line from the suggestion
-      # @param [Boolean] last whether this is the last buffer line
-      # @return [Boolean]
-      def line_matches?(buf_line, sug_line, last)
-        (last && buf_line.strip.empty?) ||
-          sug_line.start_with?(buf_line) ||
-          (!buf_line.strip.empty? && sug_line.strip.start_with?(buf_line.strip))
-      end
-
-      # Applies the remaining suggestion text into the buffer, handling multiline.
-      #
-      # @private
-      # @param [String] buffer current line content
-      # @param [String] remaining text from suggestion after the buffer match
-      # @return [Object]
-      def accept_remaining(buffer, remaining)
-        if remaining.start_with?("\n")
-          remaining = remaining[1..].to_s
-          append_lines(remaining.split("\n"))
-        else
-          lines = remaining.split("\n")
-          set_current_line(buffer + lines.first)
-          append_lines(lines.drop(1))
-        end
-      end
-
-      # Inserts multiple lines into the buffer after the current line index.
-      #
-      # @private
-      # @param [Array<String>] lines lines to insert into the buffer
-      # @return [Array<String>]
-      def append_lines(lines)
-        lines.each do |rl|
-          @buffer_of_lines.insert(@line_index + 1, rl)
-          @line_index += 1
-          @byte_pointer = rl.bytesize
-        end
+      # @param [String] suggestion The full multiline suggestion to accept.
+      # @return [void]
+      def accept_suggestion(suggestion)
+        sug_lines = suggestion.split("\n")
+        @buffer_of_lines = sug_lines
+        @line_index = sug_lines.size - 1
+        @byte_pointer = sug_lines.last.bytesize
+        rerender
       end
     end
   end
