@@ -1,9 +1,7 @@
 # Irb::Autosuggestions
 
-Fish-like autosuggestions for IRB. As you type, ghost text appears after the cursor showing the most likely completion
+Fish-like autosuggestions for IRB. As you type, gray ghost text appears showing the most likely completion
 from command history. Press right arrow to accept.
-
-![Demo](https://raw.githubusercontent.com/unurgunite/irb-autosuggestions/main/demo.gif)
 
 ## Installation
 
@@ -22,44 +20,28 @@ gem install irb-autosuggestions
 Then add to `~/.irbrc`:
 
 ```ruby
-require 'irb/autosuggestions'
+require 'irb-autosuggestions'
 ```
 
 ## Usage
 
-Start typing in IRB. A faint ghost suggestion will appear after the cursor:
+Start typing in IRB. Gray ghost text will appear after the cursor:
 
 ```
-def hello[TAB]
-  puts "Hello, world!"
-end
+irb(main):001* [1,2,3].map do |el|
+irb(main):002*   el.su☐cc      <- "cc" is gray
+irb(main):003> en☐d            <- "d" is gray
 ```
 
-Press **right arrow** (`->`) to accept the full suggestion into the buffer.
-
-### Configuration
-
-Autosuggestions are enabled by default. You can disable them in `~/.irbrc`:
-
-```ruby
-IRB.conf[:USE_AUTOSUGGESTIONS] = false
-require 'irb/autosuggestions'
-```
-
-Or via environment variable:
-
-```sh
-export IRB_USE_AUTOSUGGESTIONS=false
-```
+The ghost shows the most recent matching history entry. Press **right arrow** (`->`) to accept the full multiline suggestion.
 
 ### How it works
 
-- Suggestions come from `Reline::HISTORY` — the most recent matching entry is shown.
-- Matching is line-by-line: each buffer line must be a prefix of the corresponding suggestion line.
-- The last buffer line is lenient: if it's blank (whitespace only), it matches any suggestion line (auto-indentation
-  support).
-- Ghost text is rendered with the ANSI faint attribute (`\e[2m`) and does not modify the buffer until accepted.
+- Suggestions come from `Reline::HISTORY` — the most recent matching entry whose prefix matches the current buffer.
+- Matching is exact: the history entry must start with the current buffer (`whole_buffer`).
+- Ghost text is rendered in ANSI gray (`\e[90m`) and does not modify the buffer until accepted.
 - Multiline suggestions are supported — extra lines appear below the current line, aligned to the prompt width.
+- The inline ghost is written on the same line as the cursor. Extra lines are cleared with `\e[J` on each render to prevent artifacts.
 
 ## Development
 
@@ -103,7 +85,8 @@ lib/
     autosuggestions.rb                # Entry point; prepends LineEditorPatch to Reline::LineEditor
     autosuggestions/
       version.rb                      # VERSION constant
-      line_editor_patch.rb            # Core patch: render ghost, right-arrow accept, matching
+      line_editor_patch.rb            # Core patch: render ghost, right-arrow accept, history matching
+  irb-autosuggestions.rb              # Proxy file for `require 'irb-autosuggestions'`
 
 sig/
   lib/
@@ -111,13 +94,13 @@ sig/
 
 spec/
   irb/autosuggestions/
-    line_editor_patch_spec.rb         # 34 examples
+    line_editor_patch_spec.rb         # 17 examples
 ```
 
 The gem works by prepending `Irb::Autosuggestions::LineEditorPatch` to `Reline::LineEditor`, overriding two key methods:
 
-- **`render`** — injects ghost text into the terminal output after Reline finishes rendering.
-- **`input_key`** — intercepts right arrow (`ed_next_char`) to accept the current suggestion.
+- `render` — clears stale ghost text with `\e[J`, then injects new ghost text into terminal output.
+- `input_key` — intercepts right arrow (`ed_next_char`) to accept the current suggestion.
 
 ## Contributing
 

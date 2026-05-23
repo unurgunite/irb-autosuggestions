@@ -7,10 +7,10 @@ module Irb
       GRAY = "\e[90m"
       RESET = "\e[0m"
 
-      # Method documentation.
+      # Intercepts key input to accept autosuggestions on right arrow.
       #
-      # @param [Object] key Param documentation.
-      # @return [Object]
+      # @param [Object] key A Reline key event.
+      # @return [Object] Returns +super+ for non-right-arrow keys, +nil+ after accept.
       def input_key(key)
         if right_arrow?(key)
           buffer = whole_buffer
@@ -27,10 +27,10 @@ module Irb
 
       private
 
-      # Method documentation.
+      # Injects ghost text into terminal output after Reline finishes rendering.
       #
       # @private
-      # @return [Object]
+      # @return [Object] The result of +super+.
       def render(...)
         result = super
         Reline.core.instance_variable_get(:@output).write("\e[J")
@@ -42,21 +42,21 @@ module Irb
         result
       end
 
-      # Method documentation.
+      # Checks if a key event is a right arrow press.
       #
       # @private
-      # @param [Object] key Param documentation.
-      # @return [Object]
+      # @param [Object] key A Reline key event.
+      # @return [Boolean]
       def right_arrow?(key)
         key.respond_to?(:method_symbol) &&
           key.method_symbol == :ed_next_char
       end
 
-      # Method documentation.
+      # Computes the ghost text for a given buffer by finding the matching history entry.
       #
       # @private
-      # @param [Object] buffer Param documentation.
-      # @return [Object]
+      # @param [String] buffer The current whole buffer.
+      # @return [String, nil] The remaining text of the suggestion, or nil.
       def ghost_for(buffer)
         suggestion = find_suggestion(buffer)
         return unless suggestion
@@ -67,10 +67,10 @@ module Irb
         ghost
       end
 
-      # Method documentation.
+      # Writes the ghost text (inline + extra lines) to terminal output.
       #
       # @private
-      # @param [Object] ghost Param documentation.
+      # @param [String] ghost The full ghost text (may contain newlines).
       # @return [void]
       def render_ghost(ghost)
         lines = ghost.split("\n")
@@ -83,11 +83,11 @@ module Irb
         Reline.core.instance_variable_get(:@output).flush
       end
 
-      # Method documentation.
+      # Writes extra ghost lines below the current buffer line with prompt-width alignment.
       #
       # @private
-      # @param [Object] lines Param documentation.
-      # @return [Object]
+      # @param [Array<String>] lines Extra ghost lines (excluding the first inline line).
+      # @return [void]
       def write_extra_ghost_lines(lines)
         return if lines.empty?
 
@@ -101,11 +101,11 @@ module Irb
         end
       end
 
-      # Method documentation.
+      # Restores the cursor to the end of the buffer after ghost rendering.
       #
       # @private
-      # @param [Object] lines Param documentation.
-      # @return [Object]
+      # @param [Array<String>] lines The ghost split into lines.
+      # @return [void]
       def restore_cursor_after(lines)
         extra_count = lines.size - 1
         prompt_width = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
@@ -117,22 +117,22 @@ module Irb
         output.write("\e[#{pos}C")
       end
 
-      # Method documentation.
+      # Finds the most recent history entry that starts with the given buffer.
       #
       # @private
-      # @param [String] buffer Param documentation.
-      # @return [String, nil]
+      # @param [String] buffer The current whole buffer.
+      # @return [String, nil] The matching history entry, or nil.
       def find_suggestion(buffer)
         Reline::HISTORY.reverse.find do |h|
           h != buffer && h.start_with?(buffer)
         end
       end
 
-      # Method documentation.
+      # Replaces the entire buffer with the accepted suggestion and triggers a rerender.
       #
       # @private
-      # @param [Object] suggestion Param documentation.
-      # @return [Object]
+      # @param [String] suggestion The full multiline suggestion to accept.
+      # @return [void]
       def accept_suggestion(suggestion)
         sug_lines = suggestion.split("\n")
         @buffer_of_lines = sug_lines

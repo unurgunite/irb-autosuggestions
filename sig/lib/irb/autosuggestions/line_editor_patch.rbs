@@ -4,6 +4,10 @@ module Irb
       GRAY: String
       RESET: String
 
+      @buffer_of_lines: Array[String]
+      @byte_pointer: Integer
+      @line_index: Integer
+
       def input_key: (untyped key) -> untyped
       def render: (*untyped) -> untyped
       def right_arrow?: (untyped key) -> bool
