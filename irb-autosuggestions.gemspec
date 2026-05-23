@@ -30,7 +30,6 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   spec.add_dependency 'reline'
-
   spec.add_development_dependency 'docscribe'
   spec.add_development_dependency 'rake'
   spec.add_development_dependency 'rbs'
@@ -40,7 +39,4 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency 'rubocop-rspec'
   spec.add_development_dependency 'rubocop-sorted_methods_by_call'
   spec.add_development_dependency 'yard', '>= 0.9.38'
-
-  # For more information and examples about making a new gem, check out our
-  # guide at: https://bundler.io/guides/creating_gem.html
 end
