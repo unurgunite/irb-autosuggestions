@@ -6,13 +6,15 @@ module Irb
     module LineEditorPatch
       GRAY = "\e[90m"
       RESET = "\e[0m"
+      CONFIG_KEY = :USE_AUTOSUGGESTIONS
+      ENV_KEY = 'IRB_AUTOSUGGESTIONS'
 
       # Intercepts key input to accept autosuggestions on right arrow.
       #
       # @param [Object] key A Reline key event.
       # @return [Object] Returns +super+ for non-right-arrow keys, +nil+ after accept.
       def input_key(key)
-        if right_arrow?(key)
+        if enabled? && right_arrow?(key)
           buffer = whole_buffer
           suggestion = find_suggestion(buffer)
 
@@ -34,6 +36,7 @@ module Irb
       def render(...)
         result = super
         Reline.core.instance_variable_get(:@output).write("\e[J")
+        return result unless enabled?
 
         buffer = whole_buffer
         return result if buffer.empty?
@@ -43,6 +46,18 @@ module Irb
 
         render_ghost(ghost)
         result
+      end
+
+      # Checks whether autosuggestions are enabled via IRB.conf or env var.
+      #
+      # @private
+      # @return [Boolean]
+      def enabled?
+        case ENV.fetch(ENV_KEY, nil)
+        when '0' then false
+        when '1' then true
+        else IRB.conf.fetch(CONFIG_KEY, true)
+        end
       end
 
       # Checks if a key event is a right arrow press.

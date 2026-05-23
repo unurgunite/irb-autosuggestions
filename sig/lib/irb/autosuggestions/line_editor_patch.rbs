@@ -3,6 +3,8 @@ module Irb
     module LineEditorPatch
       GRAY: String
       RESET: String
+      CONFIG_KEY: Symbol
+      ENV_KEY: String
 
       @buffer_of_lines: Array[String]
       @byte_pointer: Integer
@@ -10,6 +12,7 @@ module Irb
 
       def input_key: (untyped key) -> untyped
       def render: (*untyped) -> untyped
+      def enabled?: () -> bool
       def right_arrow?: (untyped key) -> bool
       def ghost_for: (String buffer) -> (String | nil)
       def render_ghost: (String ghost) -> void
