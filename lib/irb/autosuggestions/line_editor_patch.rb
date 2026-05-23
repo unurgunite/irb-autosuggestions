@@ -7,9 +7,9 @@ module Irb
       RESET = "\e[0m"
       FAINT = "\e[2m"
 
-      # Method documentation.
+      # Handles right arrow key to accept the current autosuggestion.
       #
-      # @param [Object] key Param documentation.
+      # @param [Object] key key event from Reline
       # @return [Object]
       def input_key(key)
         super unless key.respond_to?(:method_symbol) && key.method_symbol == :ed_next_char && process_arrow
@@ -17,7 +17,7 @@ module Irb
 
       private
 
-      # Method documentation.
+      # Overrides Reline render to display ghost text alongside the current buffer.
       #
       # @private
       # @return [Object]
@@ -34,7 +34,7 @@ module Irb
         result
       end
 
-      # Method documentation.
+      # Clears previously rendered ghost text from the terminal with ANSI escapes.
       #
       # @private
       # @return [Object]
@@ -52,10 +52,10 @@ module Irb
         @autosuggest_extra_count = nil
       end
 
-      # Method documentation.
+      # Matches the current buffer against history and returns the ghost portion.
       #
       # @private
-      # @return [Object]
+      # @return [Array<String>, nil]
       def resolve_ghost
         @autosuggest_suggestion = find_suggestion(whole_buffer) if @autosuggest_suggestion.nil?
         if @autosuggest_suggestion &&
@@ -68,7 +68,7 @@ module Irb
         end
       end
 
-      # Method documentation.
+      # Accepts the remaining suggestion text into the buffer on right arrow.
       #
       # @private
       # @return [Boolean]
@@ -85,11 +85,11 @@ module Irb
         true
       end
 
-      # Method documentation.
+      # Writes ghost text inline and extra lines below the current terminal line.
       #
       # @private
-      # @param [Object] current_ghost Param documentation.
-      # @param [Object] extra_lines Param documentation.
+      # @param [String] current_ghost ghost text for the current line
+      # @param [Array<String>] extra_lines ghost lines beyond the current line
       # @return [Object]
       def render_ghost(current_ghost, extra_lines)
         output = Reline.core.instance_variable_get(:@output)
@@ -103,11 +103,11 @@ module Irb
         output.flush
       end
 
-      # Method documentation.
+      # Writes extra ghost lines below the current line, aligned to prompt width.
       #
       # @private
-      # @param [Object] output Param documentation.
-      # @param [Object] lines Param documentation.
+      # @param [Object] output terminal output stream
+      # @param [Array<String>] lines ghost lines to render
       # @return [Object]
       def write_extra_lines(output, lines)
         return unless lines.any?
@@ -121,23 +121,23 @@ module Irb
         @autosuggest_extra_count = lines.size
       end
 
-      # Method documentation.
+      # Searches Reline history for the most recent matching suggestion.
       #
       # @private
-      # @param [Object] buffer Param documentation.
-      # @return [Object]
+      # @param [String] buffer current buffer content
+      # @return [String, nil]
       def find_suggestion(buffer)
         Reline::HISTORY.reverse.find do |h|
           h != whole_buffer && match_suggestion?(buffer, h)
         end
       end
 
-      # Method documentation.
+      # Checks whether the buffer lines match the suggestion lines positionally.
       #
       # @private
-      # @param [Object] buffer Param documentation.
-      # @param [Object] suggestion Param documentation.
-      # @return [Object]
+      # @param [String] buffer current buffer content
+      # @param [String] suggestion possible suggestion from history
+      # @return [Boolean]
       def match_suggestion?(buffer, suggestion)
         buf_lines = buffer.split("\n", -1)
         sug_lines = suggestion.split("\n", -1)
@@ -147,24 +147,24 @@ module Irb
           end
       end
 
-      # Method documentation.
+      # Checks if a single buffer line matches a suggestion line (lenient on last).
       #
       # @private
-      # @param [Object] buf_line Param documentation.
-      # @param [Object] sug_line Param documentation.
-      # @param [Object] last Param documentation.
-      # @return [Object]
+      # @param [String] buf_line a line from the current buffer
+      # @param [String] sug_line the corresponding line from the suggestion
+      # @param [Boolean] last whether this is the last buffer line
+      # @return [Boolean]
       def line_matches?(buf_line, sug_line, last)
         (last && buf_line.strip.empty?) ||
           sug_line.start_with?(buf_line) ||
           (!buf_line.strip.empty? && sug_line.strip.start_with?(buf_line.strip))
       end
 
-      # Method documentation.
+      # Applies the remaining suggestion text into the buffer, handling multiline.
       #
       # @private
-      # @param [Object] buffer Param documentation.
-      # @param [Object] remaining Param documentation.
+      # @param [String] buffer current line content
+      # @param [String] remaining text from suggestion after the buffer match
       # @return [Object]
       def accept_remaining(buffer, remaining)
         if remaining.start_with?("\n")
@@ -177,11 +177,11 @@ module Irb
         end
       end
 
-      # Method documentation.
+      # Inserts multiple lines into the buffer after the current line index.
       #
       # @private
-      # @param [Object] lines Param documentation.
-      # @return [Object]
+      # @param [Array<String>] lines lines to insert into the buffer
+      # @return [Array<String>]
       def append_lines(lines)
         lines.each do |rl|
           @buffer_of_lines.insert(@line_index + 1, rl)
