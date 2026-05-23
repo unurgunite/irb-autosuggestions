@@ -22,7 +22,7 @@ gem install irb-autosuggestions
 Then add to `~/.irbrc`:
 
 ```ruby
-require 'irb-autosuggestions'
+require 'irb/autosuggestions'
 ```
 
 ## Usage
@@ -43,7 +43,7 @@ Autosuggestions are enabled by default. You can disable them in `~/.irbrc`:
 
 ```ruby
 IRB.conf[:USE_AUTOSUGGESTIONS] = false
-require 'irb-autosuggestions'
+require 'irb/autosuggestions'
 ```
 
 Or via environment variable:
