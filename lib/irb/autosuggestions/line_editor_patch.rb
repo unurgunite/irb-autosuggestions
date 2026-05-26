@@ -56,6 +56,7 @@ module Irb
       # @private
       # @param [Object] key
       # @param [Integer] arg Repeat count.
+      # @return [Object]
       def ed_prev_history(key, arg: 1)
         if enabled? && (@line_index.zero? || @history_pointer)
           buffer = prefix_buffer_for_nav
@@ -73,6 +74,7 @@ module Irb
       # @private
       # @param [Object] key
       # @param [Integer] arg Repeat count.
+      # @return [Object]
       def ed_next_history(key, arg: 1)
         if enabled? && @history_pointer && @prefix_buffer
           walk_history_forward(arg)
@@ -142,6 +144,7 @@ module Irb
       # @private
       # @param [String] buffer The prefix anchor.
       # @param [Integer] arg Repeat count.
+      # @return [Object]
       def walk_history_back(buffer, arg)
         arg.times do
           pointer = find_prev_match(buffer, @history_pointer)
@@ -156,6 +159,7 @@ module Irb
       #
       # @private
       # @param [Integer] arg Repeat count.
+      # @return [Object]
       def walk_history_forward(arg)
         arg.times do
           pointer = find_next_match(@prefix_buffer, @history_pointer)
@@ -243,15 +247,18 @@ module Irb
       end
 
       # Whether duplicate collapsing is active (only for prefix search).
-
+      #
+      # @private
+      # @param [String] buffer Search prefix.
+      # @return [Boolean]
       def dedup?(buffer)
         !buffer.empty?
       end
 
-      # Whether +entry+ at index +i+ is a consecutive duplicate of the next entry.
+      # Whether +entry+ at index +idx+ is a consecutive duplicate of the next entry.
       #
       # @private
-      # @param [Integer] i
+      # @param [Integer] idx
       # @param [String] entry
       # @return [Boolean]
       def duplicate_of_newer?(idx, entry)

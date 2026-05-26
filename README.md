@@ -13,6 +13,7 @@ No need to explain. Fish-like autosuggestions for IRB — ghost text from histor
     * [Contents](#contents)
     * [Installation](#installation)
     * [Usage](#usage)
+        * [Prefix-filtered history navigation](#prefix-filtered-history-navigation)
     * [Configuration](#configuration)
         * [Colors](#colors)
         * [How it works](#how-it-works)
@@ -45,6 +46,24 @@ irb(main):003> end            <- "d" in gray
 ```
 
 Press **right arrow** (`->`) to accept the full multiline suggestion.
+
+### Prefix-filtered history navigation
+
+**Up/down arrows** navigate history filtered by the typed prefix (like zsh). Start typing and press **up** — only
+entries matching your prefix are shown. The prefix is frozen on the first press; subsequent presses keep searching
+within that prefix:
+
+```
+irb(main):001:0> def          <- type "def", press up
+irb(main):001:0> def foo      <- press up again then older "def*" entry
+```
+
+Press **right arrow** to accept the suggestion and exit prefix mode. Any non-history key (letter, enter, etc.) resets
+the prefix anchor, returning arrows to normal unfiltered browsing.
+
+Consecutive duplicate entries are collapsed during prefix search so each unique line appears once.
+
+Regular unfiltered history browsing (empty buffer + up arrow) is unchanged — all entries are shown including duplicates.
 
 ## Configuration
 
@@ -90,8 +109,11 @@ irb --nocolorize
 - When available, the ghost uses `IRB::Color.colorize_code` to match IRB's syntax colors, dimmed via ANSI escape codes
   for visual distinction.
 - Extra ghost lines (for multiline history entries) are drawn below the prompt.
-- `\e[J` clears stale ghost artifacts from the viewport.
+- Ghost artifacts are cleared each frame using cursor save/restore (`\e[s`/`\e[u`) and per-line clearing (`\e[2K`),
+  avoiding `\e[J` which interfered with Reline's cursor tracking.
 - Right arrow triggers `ed_next_char`, which replaces the buffer with the ghost text.
+- Up/down arrows use prefix-filtered navigation when the buffer is non-empty, falling back to unfiltered browsing
+  when nothing was typed.
 
 ## Development
 
