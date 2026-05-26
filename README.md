@@ -14,6 +14,7 @@ No need to explain. Fish-like autosuggestions for IRB — ghost text from histor
     * [Installation](#installation)
     * [Usage](#usage)
     * [Configuration](#configuration)
+        * [Colors](#colors)
         * [How it works](#how-it-works)
     * [Development](#development)
     * [License](#license)
@@ -78,7 +79,7 @@ Or from command line:
 irb --nocolorize
 ```
 
-> **Note:** Colorized ghost rendering may behave differently across terminal emulators, Ruby versions, and IRB color
+> [!NOTE] Colorized ghost rendering may behave differently across terminal emulators, Ruby versions, and IRB color
 > schemes. If you notice visual artifacts (e.g., wrong colors, underlines, or unusual brightness), try disabling the
 > feature or switch to the gray fallback or create new issue.
 
