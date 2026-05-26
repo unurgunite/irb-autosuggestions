@@ -1,10 +1,13 @@
 module Irb
   module Autosuggestions
     module LineEditorPatch
+      DIM: String
+      FG_COLORS: Array[Integer]
       GRAY: String
       RESET: String
       CONFIG_KEY: Symbol
       ENV_KEY: String
+      RESET_COLOR: String
 
       @buffer_of_lines: Array[String]
       @byte_pointer: Integer
