@@ -2,10 +2,19 @@
 
 unless defined?(IRB)
   module IRB
-    # stub for Ruby 4.0
     @conf = {}
     def self.conf
       @conf
+    end
+
+    module Color
+      def self.colorable?
+        false
+      end
+
+      def self.colorize_code(code, _complete: true, _ignore_error: false, _colorable: colorable?, _local_variables: [])
+        code
+      end
     end
   end
 end
