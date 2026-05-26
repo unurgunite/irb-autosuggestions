@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    irb-autosuggestions (0.1.1)
+    irb-autosuggestions (0.2.0)
       reline
 
 GEM

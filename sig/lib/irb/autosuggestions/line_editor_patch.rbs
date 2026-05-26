@@ -13,9 +13,12 @@ module Irb
       def input_key: (untyped key) -> untyped
       def render: (*untyped) -> untyped
       def enabled?: () -> bool
+      def use_colorize?: () -> bool
       def right_arrow?: (untyped key) -> bool
-      def ghost_for: (String buffer) -> (String | nil)
-      def render_ghost: (String ghost) -> void
+      def render_ghost: (String ghost, ?String suggestion) -> void
+      def ghost_display_lines: (String ghost, ?String suggestion) -> Array[String]
+      def colorize_ghost_lines: (String ghost, String suggestion) -> Array[String]
+      def extract_ansi_colored_suffix: (String colored_text, Integer visible_byte_offset) -> String
       def write_extra_ghost_lines: (Array[String] lines) -> void
       def restore_cursor_after: (Array[String] lines) -> void
       def find_suggestion: (String buffer) -> (String | nil)

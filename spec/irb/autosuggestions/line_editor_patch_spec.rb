@@ -199,6 +199,109 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
     end
   end
 
+  describe '#extract_ansi_colored_suffix' do
+    it 'extracts suffix preserving leading ANSI codes' do
+      colored = "plain\e[32mcolored\e[0m"
+      expect(editor.send(:extract_ansi_colored_suffix, colored, 5))
+        .to eq("\e[32mcolored\e[0m")
+    end
+
+    it 'extracts from between ANSI tokens' do
+      colored = "\e[32mdef\e[0m \e[36mfoo\e[0m"
+      expect(editor.send(:extract_ansi_colored_suffix, colored, 4))
+        .to eq("\e[36mfoo\e[0m")
+    end
+
+    it 'returns full string when offset is zero' do
+      colored = "\e[32mtext\e[0m"
+      expect(editor.send(:extract_ansi_colored_suffix, colored, 0))
+        .to eq(colored)
+    end
+
+    it 'returns empty string when offset exceeds visible length' do
+      colored = "\e[32mabc\e[0m"
+      expect(editor.send(:extract_ansi_colored_suffix, colored, 99))
+        .to eq('')
+    end
+
+    it 'handles uncolored text' do
+      expect(editor.send(:extract_ansi_colored_suffix, 'hello', 2))
+        .to eq('llo')
+    end
+  end
+
+  describe '#ghost_display_lines' do
+    it 'wraps ghost in gray when suggestion is nil' do
+      lines = editor.send(:ghost_display_lines, 'foo', nil)
+      expect(lines).to eq(["\e[90mfoo\e[0m"])
+    end
+
+    it 'wraps multiline ghost in gray when suggestion is nil' do
+      lines = editor.send(:ghost_display_lines, "foo\nbar", nil)
+      expect(lines).to eq(["\e[90mfoo\e[0m", "\e[90mbar\e[0m"])
+    end
+
+    context 'when colorize is enabled' do
+      around do |example|
+        original = IRB.conf[:USE_COLORIZE]
+        IRB.conf[:USE_COLORIZE] = true
+        example.run
+      ensure
+        IRB.conf[:USE_COLORIZE] = original
+      end
+
+      before do
+        allow(IRB::Color).to receive(:colorable?).and_return(true)
+        allow(IRB::Color).to receive(:colorize_code) do |code|
+          # Simulate per-token ANSI coloring (like real IRB::Color)
+          code.gsub(/(\w+)/) { "\e[32m#{Regexp.last_match(1)}\e[0m" }
+        end
+      end
+
+      it 'colorizes and extracts ghost portion' do
+        lines = editor.send(:ghost_display_lines, 'foo', 'def foo')
+        expect(lines).to eq(["\e[2m\e[2;32mfoo\e[39;49m\e[0m"])
+      end
+
+      it 'splits multiline colorized ghost' do
+        lines = editor.send(:ghost_display_lines, "bar\nbaz", "def foo\nbar\nbaz")
+        expect(lines).to eq(["\e[2m\e[2;32mbar\e[39;49m\e[0m", "\e[2m\e[2;32mbaz\e[39;49m\e[0m"])
+      end
+
+      it 'falls back to gray on error' do
+        allow(IRB::Color).to receive(:colorize_code).and_raise(StandardError)
+        lines = editor.send(:ghost_display_lines, 'foo', 'def foo')
+        expect(lines).to eq(["\e[90mfoo\e[0m"])
+      end
+    end
+  end
+
+  describe '#use_colorize?' do
+    around do |example|
+      original = IRB.conf[:USE_COLORIZE]
+      example.run
+    ensure
+      IRB.conf[:USE_COLORIZE] = original
+    end
+
+    it 'returns false when IRB::Color.colorable? is false' do
+      IRB.conf[:USE_COLORIZE] = true
+      expect(editor.send(:use_colorize?)).to be false
+    end
+
+    it 'returns true when IRB::Color.colorable? is true and USE_COLORIZE is set' do
+      IRB.conf[:USE_COLORIZE] = true
+      allow(IRB::Color).to receive(:colorable?).and_return(true)
+      expect(editor.send(:use_colorize?)).to be true
+    end
+
+    it 'returns false when USE_COLORIZE is false' do
+      IRB.conf[:USE_COLORIZE] = false
+      allow(IRB::Color).to receive(:colorable?).and_return(true)
+      expect(editor.send(:use_colorize?)).to be false
+    end
+  end
+
   describe 'constant values' do
     it 'uses gray ANSI code for ghost text' do
       expect(described_class::GRAY).to eq("\e[90m")
