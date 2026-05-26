@@ -36,10 +36,6 @@ module Irb
 
       private
 
-      # ------------------------------------------------------------------
-      # Rendering
-      # ------------------------------------------------------------------
-
       # Injects ghost text into terminal output after Reline finishes rendering.
       # Clears any previous ghost text (inline and multi-line) first,
       # then renders the new ghost suggestion.
@@ -54,10 +50,6 @@ module Irb
         end
         result
       end
-
-      # ------------------------------------------------------------------
-      # Prefix-filtered history navigation
-      # ------------------------------------------------------------------
 
       # Prefix-filtered up-arrow history navigation.
       #
