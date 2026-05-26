@@ -93,10 +93,6 @@ gems:
   version: 4.0.2
   source:
     type: rubygems
-- name: rdoc
-  version: '0'
-  source:
-    type: stdlib
 - name: regexp_parser
   version: '2.8'
   source:

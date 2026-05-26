@@ -126,6 +126,7 @@ module Irb
       # @private
       # @param [String] ghost The ghost text (suffix of the suggestion).
       # @param [String, nil] suggestion The full matching history entry.
+      # @raise [StandardError]
       # @return [Array<String>]
       def ghost_display_lines(ghost, suggestion)
         if suggestion && use_colorize?
