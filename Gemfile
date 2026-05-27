@@ -2,5 +2,6 @@
 
 source 'https://rubygems.org'
 
-# Specify your gem's dependencies in irb-autosuggestions.gemspec
 gemspec
+
+gem 'rbs', '~> 3.6.0', require: false if Gem::Version.new(RUBY_VERSION) >= Gem::Version.new('3.0')

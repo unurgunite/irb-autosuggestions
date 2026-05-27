@@ -32,7 +32,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'reline'
   spec.add_development_dependency 'docscribe'
   spec.add_development_dependency 'rake'
-  spec.add_development_dependency 'rbs'
   spec.add_development_dependency 'rspec', '~> 3.0'
   spec.add_development_dependency 'rubocop'
   spec.add_development_dependency 'rubocop-rake'
