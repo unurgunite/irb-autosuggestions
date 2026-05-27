@@ -1,7 +1,10 @@
 # Irb::Autosuggestions
 
 [![Gem Version](https://badge.fury.io/rb/irb-autosuggestions.svg)](https://rubygems.org/gems/irb-autosuggestions)
+[![RubyGems Downloads](https://img.shields.io/gem/dt/irb-autosuggestions.svg)](https://rubygems.org/gems/irb-autosuggestions)
 [![CI](https://github.com/unurgunite/irb-autosuggestions/actions/workflows/ci.yml/badge.svg)](https://github.com/unurgunite/irb-autosuggestions/actions)
+[![License](https://img.shields.io/github/license/unurgunite/irb-autosuggestions.svg)](https://github.com/unurgunite/irb-autosuggestions/blob/master/LICENSE.txt)
+[![Ruby](https://img.shields.io/badge/ruby-%3E%3D%202.7-blue.svg)](#installation)
 
 ![Irb::Autosuggestions](readme.png)
 

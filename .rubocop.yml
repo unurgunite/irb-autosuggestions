@@ -5,7 +5,7 @@ plugins:
 
 AllCops:
   NewCops: enable
-  TargetRubyVersion: 3.0
+  TargetRubyVersion: 2.7
 
 Style/DoubleNegation:
   Enabled: false
