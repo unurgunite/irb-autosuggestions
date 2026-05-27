@@ -19,6 +19,9 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
         instance_variable_set(:@buffer_of_lines, buf)
       end
       obj.define_singleton_method(:render) { :super_result }
+      # Stub originals so super works for non-prefix paths.
+      obj.define_singleton_method(:ed_prev_history) { |_key, arg: 1| :super_prev } # rubocop:disable Lint/UnusedBlockArgument
+      obj.define_singleton_method(:ed_next_history) { |_key, arg: 1| :super_next } # rubocop:disable Lint/UnusedBlockArgument
       obj.singleton_class.prepend(described_class)
       obj.instance_variable_set(:@buffer_of_lines, [''])
       obj.instance_variable_set(:@line_index, 0)
@@ -60,6 +63,302 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
       Reline::HISTORY << "def foo\n  :foo\nend"
       result = editor.send(:find_suggestion, "def foo\n  :f")
       expect(result).to eq("def foo\n  :foo\nend")
+    end
+  end
+
+  describe '#history_navigation_key?' do
+    it 'returns true for :ed_prev_history' do
+      key = double(method_symbol: :ed_prev_history)
+      expect(editor.send(:history_navigation_key?, key)).to be true
+    end
+
+    it 'returns true for :ed_next_history' do
+      key = double(method_symbol: :ed_next_history)
+      expect(editor.send(:history_navigation_key?, key)).to be true
+    end
+
+    it 'returns false for non-history keys' do
+      key = double(method_symbol: :ed_next_char)
+      expect(editor.send(:history_navigation_key?, key)).to be false
+    end
+
+    it 'returns false when key does not respond to method_symbol' do
+      expect(editor.send(:history_navigation_key?, nil)).to be false
+    end
+  end
+
+  describe '#find_prev_match' do
+    around do |example|
+      original = Reline::HISTORY.to_a
+      Reline::HISTORY.clear
+      example.run
+    ensure
+      Reline::HISTORY.clear
+      original.each { |h| Reline::HISTORY << h }
+    end
+
+    # 4 elements: indices 0-3
+    before do
+      ['def baz extra', 'def baz', 'c', 'def foo'].each { |h| Reline::HISTORY << h }
+    end
+
+    it 'finds the previous match backward from given pointer' do
+      expect(editor.send(:find_prev_match, 'def', 3)).to eq(1)
+    end
+
+    it 'finds the previous match from base buffer' do
+      expect(editor.send(:find_prev_match, 'def', nil)).to eq(3)
+    end
+
+    it 'returns nil when no match exists before pointer' do
+      expect(editor.send(:find_prev_match, 'x', 0)).to be_nil
+    end
+
+    it 'returns exact match first, then longer match' do # rubocop:disable RSpec/MultipleExpectations
+      # index 1 is "def baz" (exact), index 0 is "def baz extra" (longer)
+      expect(editor.send(:find_prev_match, 'def baz', 3)).to eq(1)
+      expect(editor.send(:find_prev_match, 'def baz', 1)).to eq(0)
+    end
+
+    it 'returns nil when start index is negative' do
+      expect(editor.send(:find_prev_match, 'a', 0)).to be_nil
+    end
+
+    it 'skips consecutive duplicate entries' do # rubocop:disable RSpec/ExampleLength
+      Reline::HISTORY.clear
+      %w[exit exit 123 exit exit].each { |h| Reline::HISTORY << h }
+      aggregate_failures do
+        expect(editor.send(:find_prev_match, 'ex', nil)).to eq(4)
+        expect(editor.send(:find_prev_match, 'ex', 4)).to eq(1)
+      end
+    end
+
+    it 'does NOT dedup when buffer is empty (no prefix)' do # rubocop:disable RSpec/MultipleExpectations
+      Reline::HISTORY.clear
+      %w[exit exit exit exit ex123+123 exit exit].each { |h| Reline::HISTORY << h }
+      expect(editor.send(:find_prev_match, '', nil)).to eq(6)
+      expect(editor.send(:find_prev_match, '', 6)).to eq(5)
+      expect(editor.send(:find_prev_match, '', 5)).to eq(4)
+    end
+  end
+
+  describe '#find_next_match' do
+    around do |example|
+      original = Reline::HISTORY.to_a
+      Reline::HISTORY.clear
+      example.run
+    ensure
+      Reline::HISTORY.clear
+      original.each { |h| Reline::HISTORY << h }
+    end
+
+    # 4 elements: indices 0-3
+    before do
+      ['def baz', 'a', 'def foo', 'c'].each { |h| Reline::HISTORY << h }
+    end
+
+    it 'finds the next match forward from given pointer' do
+      expect(editor.send(:find_next_match, 'def', 0)).to eq(2)
+    end
+
+    it 'returns exact match first, then longer match' do # rubocop:disable RSpec/MultipleExpectations
+      Reline::HISTORY.clear
+      ['def baz', 'def baz', 'def baz extra'].each { |h| Reline::HISTORY << h }
+      # Index 1 is exact match, index 2 is longer match
+      expect(editor.send(:find_next_match, 'def baz', 0)).to eq(1)
+      expect(editor.send(:find_next_match, 'def baz', 1)).to eq(2)
+    end
+
+    it 'returns nil when pointer is nil' do
+      expect(editor.send(:find_next_match, 'def', nil)).to be_nil
+    end
+
+    it 'returns nil when no match exists after pointer' do
+      expect(editor.send(:find_next_match, 'def', 2)).to be_nil
+    end
+
+    it 'returns nil when start index exceeds history' do
+      expect(editor.send(:find_next_match, 'def', 5)).to be_nil
+    end
+
+    it 'skips consecutive duplicate entries when going forward' do # rubocop:disable RSpec/ExampleLength
+      Reline::HISTORY.clear
+      %w[exit exit 123 exit exit].each { |h| Reline::HISTORY << h }
+      aggregate_failures do
+        expect(editor.send(:find_next_match, 'ex', 0)).to eq(1)
+        expect(editor.send(:find_next_match, 'ex', 1)).to eq(4)
+      end
+    end
+
+    it 'lands on the last entry of each duplicate run like find_prev_match' do
+      Reline::HISTORY.clear
+      %w[exit exit 123 exit exit].each { |h| Reline::HISTORY << h }
+      prev = editor.send(:find_prev_match, 'ex', nil)
+      nxt = editor.send(:find_next_match, 'ex', prev)
+      expect(nxt).to be_nil
+    end
+
+    it 'does NOT dedup when buffer is empty (no prefix)' do # rubocop:disable RSpec/MultipleExpectations
+      Reline::HISTORY.clear
+      %w[exit exit exit exit ex123+123 exit exit].each { |h| Reline::HISTORY << h }
+      expect(editor.send(:find_next_match, '', 0)).to eq(1)
+      expect(editor.send(:find_next_match, '', 1)).to eq(2)
+      expect(editor.send(:find_next_match, '', 2)).to eq(3)
+    end
+  end
+
+  describe '#ed_prev_history (prefix navigation)' do
+    around do |example|
+      original = Reline::HISTORY.to_a
+      Reline::HISTORY.clear
+      example.run
+    ensure
+      Reline::HISTORY.clear
+      original.each { |h| Reline::HISTORY << h }
+    end
+
+    before do
+      stub_move_history(editor)
+      # 4 elements: indices 0-3
+      ['a', 'def baz', 'c', 'def foo'].each { |h| Reline::HISTORY << h }
+    end
+
+    it 'navigates to the most recent matching entry from base buffer' do # rubocop:disable RSpec/ExampleLength
+      editor.instance_variable_set(:@buffer_of_lines, ['def '])
+      editor.send(:ed_prev_history, nil)
+      aggregate_failures do
+        expect(editor.instance_variable_get(:@buffer_of_lines)).to eq(['def foo'])
+        expect(editor.instance_variable_get(:@history_pointer)).to eq(3)
+      end
+    end
+
+    it 'fixes the prefix anchor on first movement' do
+      editor.instance_variable_set(:@buffer_of_lines, ['def '])
+      editor.send(:ed_prev_history, nil)
+      expect(editor.instance_variable_get(:@prefix_buffer)).to eq('def ')
+    end
+
+    it 'stops when no more matches exist' do
+      editor.instance_variable_set(:@buffer_of_lines, ['def '])
+      3.times { editor.send(:ed_prev_history, nil) }
+      expect(editor.instance_variable_get(:@history_pointer)).to eq(1)
+    end
+
+    it 'skips consecutive duplicates during full history walk' do # rubocop:disable RSpec/ExampleLength, RSpec/MultipleExpectations
+      Reline::HISTORY.clear
+      %w[exit exit exit 123+123 exit exit].each { |h| Reline::HISTORY << h }
+      editor.instance_variable_set(:@buffer_of_lines, ['ex'])
+      editor.send(:ed_prev_history, nil)
+      expect(editor.instance_variable_get(:@history_pointer)).to eq(5)
+      editor.send(:ed_prev_history, nil)
+      expect(editor.instance_variable_get(:@history_pointer)).to eq(2)
+      editor.send(:ed_prev_history, nil)
+      expect(editor.instance_variable_get(:@history_pointer)).to eq(2)
+    end
+
+    it 'does nothing when buffer is empty (falls through to super)' do
+      expect(editor.send(:ed_prev_history, nil)).to eq(:super_prev)
+    end
+
+    it 'does nothing when feature is disabled' do
+      with_config(false) do
+        editor.instance_variable_set(:@buffer_of_lines, ['def '])
+        expect(editor.send(:ed_prev_history, nil)).to eq(:super_prev)
+      end
+    end
+
+    it 'does nothing when moving within multiline buffer' do
+      editor.instance_variable_set(:@buffer_of_lines, ['line 1', 'line 2'])
+      editor.instance_variable_set(:@line_index, 1)
+      expect(editor.send(:ed_prev_history, nil)).to eq(:super_prev)
+    end
+
+    it 'navigates history from a non-first line when browsing history' do # rubocop:disable RSpec/ExampleLength
+      editor.instance_variable_set(:@prefix_buffer, 'def ')
+      editor.instance_variable_set(:@buffer_of_lines, ['line 1', 'line 2', 'def '])
+      editor.instance_variable_set(:@line_index, 1)
+      editor.instance_variable_set(:@history_pointer, 3)
+      editor.send(:ed_prev_history, nil)
+      expect(editor.instance_variable_get(:@history_pointer)).to eq(1)
+    end
+
+    context 'with arg > 1' do
+      it 'moves back multiple matches at once' do
+        editor.instance_variable_set(:@buffer_of_lines, ['def '])
+        editor.send(:ed_prev_history, nil, arg: 2)
+        expect(editor.instance_variable_get(:@history_pointer)).to eq(1)
+      end
+    end
+  end
+
+  describe '#ed_next_history (prefix navigation)' do
+    around do |example|
+      original = Reline::HISTORY.to_a
+      Reline::HISTORY.clear
+      example.run
+    ensure
+      Reline::HISTORY.clear
+      original.each { |h| Reline::HISTORY << h }
+    end
+
+    before do
+      stub_move_history(editor)
+      # 5 elements: indices 0-4
+      ['def baz', 'a', 'def foo', 'c', 'def moo'].each { |h| Reline::HISTORY << h }
+    end
+
+    it 'navigates to the next newer matching entry' do # rubocop:disable RSpec/ExampleLength
+      aggregate_failures do
+        editor.instance_variable_set(:@prefix_buffer, 'def ')
+        editor.instance_variable_set(:@buffer_of_lines, ['def '])
+        editor.instance_variable_set(:@history_pointer, 0)
+        editor.send(:ed_next_history, nil)
+        expect(editor.instance_variable_get(:@buffer_of_lines)).to eq(['def foo'])
+        expect(editor.instance_variable_get(:@history_pointer)).to eq(2)
+      end
+    end
+
+    it 'restores the original buffer when no more forward matches' do # rubocop:disable RSpec/ExampleLength
+      aggregate_failures do
+        editor.instance_variable_set(:@prefix_buffer, 'def ')
+        editor.instance_variable_set(:@buffer_of_lines, ['def '])
+        editor.instance_variable_set(:@history_pointer, 4)
+        editor.instance_variable_set(:@line_backup_in_history, 'def ')
+        editor.send(:ed_next_history, nil)
+        expect(editor.instance_variable_get(:@buffer_of_lines)).to eq(['def '])
+        expect(editor.instance_variable_get(:@history_pointer)).to be_nil
+      end
+    end
+
+    it 'does nothing when @history_pointer is nil (base buffer)' do
+      expect(editor.send(:ed_next_history, nil)).to eq(:super_next)
+    end
+
+    it 'navigates forward from a non-last line when browsing history' do # rubocop:disable RSpec/ExampleLength
+      editor.instance_variable_set(:@prefix_buffer, 'def ')
+      editor.instance_variable_set(:@buffer_of_lines, ['def ', 'line 2', 'line 3'])
+      editor.instance_variable_set(:@line_index, 1)
+      editor.instance_variable_set(:@history_pointer, 0)
+      editor.send(:ed_next_history, nil)
+      expect(editor.instance_variable_get(:@history_pointer)).to eq(2)
+    end
+
+    it 'uses the prefix anchor when available' do
+      editor.instance_variable_set(:@prefix_buffer, 'def ')
+      editor.instance_variable_set(:@buffer_of_lines, ['def baz'])
+      editor.instance_variable_set(:@history_pointer, 0)
+      editor.send(:ed_next_history, nil)
+      expect(editor.instance_variable_get(:@history_pointer)).to eq(2)
+    end
+
+    context 'with arg > 1' do
+      it 'moves forward multiple matches at once' do
+        editor.instance_variable_set(:@prefix_buffer, 'def ')
+        editor.instance_variable_set(:@buffer_of_lines, ['def baz'])
+        editor.instance_variable_set(:@history_pointer, 0)
+        editor.send(:ed_next_history, nil, arg: 2)
+        expect(editor.instance_variable_get(:@history_pointer)).to eq(4)
+      end
     end
   end
 
