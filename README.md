@@ -65,6 +65,18 @@ Consecutive duplicate entries are collapsed during prefix search so each unique 
 
 Regular unfiltered history browsing (empty buffer + up arrow) is unchanged — all entries are shown including duplicates.
 
+To disable prefix navigation while keeping ghost text:
+
+```ruby
+IRB.conf[:USE_PREFIX_HISTORY_NAVIGATION] = false
+```
+
+Or via environment variable:
+
+```sh
+export IRB_PREFIX_HISTORY_NAVIGATION=0
+```
+
 ## Configuration
 
 Autosuggestions are enabled by default. To disable:

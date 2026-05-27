@@ -1,7 +1,9 @@
 module Irb
   module Autosuggestions
     module LineEditorPatch
+      CONFIG_NAV_KEY: Symbol
       DIM: String
+      ENV_NAV_KEY: String
       FG_COLORS: Array[Integer]
       GRAY: String
       RESET: String

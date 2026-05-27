@@ -12,6 +12,8 @@ module Irb
       FG_COLORS = ((30..37).to_a + (90..97).to_a + [38, 39]).freeze
       CONFIG_KEY = :USE_AUTOSUGGESTIONS
       ENV_KEY = 'IRB_AUTOSUGGESTIONS'
+      CONFIG_NAV_KEY = :USE_PREFIX_HISTORY_NAVIGATION
+      ENV_NAV_KEY = 'IRB_PREFIX_HISTORY_NAVIGATION'
 
       # Intercepts key input to accept autosuggestions on right arrow
       # and clears the prefix navigation anchor on non-history keys.
@@ -19,7 +21,7 @@ module Irb
       # @param [Object] key A Reline key event.
       # @return [Object]
       def input_key(key)
-        clear_prefix_anchor unless history_navigation_key?(key)
+        clear_prefix_anchor if navigation_enabled? && !history_navigation_key?(key)
 
         if enabled? && right_arrow?(key)
           buffer = whole_buffer
@@ -58,7 +60,7 @@ module Irb
       # @param [Integer] arg Repeat count.
       # @return [Object]
       def ed_prev_history(key, arg: 1)
-        if enabled? && (@line_index.zero? || @history_pointer)
+        if navigation_enabled? && (@line_index.zero? || @history_pointer)
           buffer = prefix_buffer_for_nav
           if buffer && !buffer.empty?
             walk_history_back(buffer, arg)
@@ -76,7 +78,7 @@ module Irb
       # @param [Integer] arg Repeat count.
       # @return [Object]
       def ed_next_history(key, arg: 1)
-        if enabled? && @history_pointer && @prefix_buffer
+        if navigation_enabled? && @history_pointer && @prefix_buffer
           walk_history_forward(arg)
           return
         end
@@ -193,6 +195,21 @@ module Irb
         else
           val = IRB.conf[CONFIG_KEY]
           val.nil? || val
+        end
+      end
+
+      # Whether prefix-filtered history navigation is enabled.
+      # Falls back to the value of +enabled?+ when not explicitly set.
+      #
+      # @private
+      # @return [Boolean]
+      def navigation_enabled?
+        case ENV.fetch(ENV_NAV_KEY, nil)
+        when '0' then false
+        when '1' then true
+        else
+          val = IRB.conf[CONFIG_NAV_KEY]
+          val.nil? ? enabled? : val
         end
       end
 
