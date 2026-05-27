@@ -2,17 +2,29 @@
 
 unless defined?(IRB)
   module IRB
-    # stub for Ruby 4.0
     @conf = {}
     def self.conf
       @conf
+    end
+
+    module Color
+      def self.colorable?
+        false
+      end
+
+      def self.colorize_code(code, _complete: true, _ignore_error: false, _colorable: colorable?, _local_variables: [])
+        code
+      end
     end
   end
 end
 
 require 'irb/autosuggestions'
 
+Dir["#{__dir__}/support/**/*.rb"].sort.each { |f| require f }
+
 RSpec.configure do |config|
+  config.include LineEditorPatchHelpers
   # Enable flags like --only-failures and --next-failure
   config.example_status_persistence_file_path = '.rspec_status'
 

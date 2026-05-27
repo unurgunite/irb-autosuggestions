@@ -1,7 +1,10 @@
 # Irb::Autosuggestions
 
 [![Gem Version](https://badge.fury.io/rb/irb-autosuggestions.svg)](https://rubygems.org/gems/irb-autosuggestions)
+[![RubyGems Downloads](https://img.shields.io/gem/dt/irb-autosuggestions.svg)](https://rubygems.org/gems/irb-autosuggestions)
 [![CI](https://github.com/unurgunite/irb-autosuggestions/actions/workflows/ci.yml/badge.svg)](https://github.com/unurgunite/irb-autosuggestions/actions)
+[![License](https://img.shields.io/github/license/unurgunite/irb-autosuggestions.svg)](https://github.com/unurgunite/irb-autosuggestions/blob/master/LICENSE.txt)
+[![Ruby](https://img.shields.io/badge/ruby-%3E%3D%202.7-blue.svg)](#installation)
 
 ![Irb::Autosuggestions](readme.png)
 
@@ -13,7 +16,9 @@ No need to explain. Fish-like autosuggestions for IRB — ghost text from histor
     * [Contents](#contents)
     * [Installation](#installation)
     * [Usage](#usage)
+        * [Prefix-filtered history navigation](#prefix-filtered-history-navigation)
     * [Configuration](#configuration)
+        * [Colors](#colors)
         * [How it works](#how-it-works)
     * [Development](#development)
     * [License](#license)
@@ -34,7 +39,8 @@ require 'irb-autosuggestions'
 
 ## Usage
 
-Start typing in IRB. Gray ghost text appears after the cursor, showing the most recent matching history entry:
+Start typing in IRB. Ghost text appears after the cursor, showing the most recent matching history entry with syntax
+coloring (or gray if colorization is unavailable or disabled):
 
 ```
 irb(main):001* [1,2,3].map do |el|
@@ -43,6 +49,36 @@ irb(main):003> end            <- "d" in gray
 ```
 
 Press **right arrow** (`->`) to accept the full multiline suggestion.
+
+### Prefix-filtered history navigation
+
+**Up/down arrows** navigate history filtered by the typed prefix (like zsh). Start typing and press **up** — only
+entries matching your prefix are shown. The prefix is frozen on the first press; subsequent presses keep searching
+within that prefix:
+
+```
+irb(main):001:0> def          <- type "def", press up
+irb(main):001:0> def foo      <- press up again then older "def*" entry
+```
+
+Press **right arrow** to accept the suggestion and exit prefix mode. Any non-history key (letter, enter, etc.) resets
+the prefix anchor, returning arrows to normal unfiltered browsing.
+
+Consecutive duplicate entries are collapsed during prefix search so each unique line appears once.
+
+Regular unfiltered history browsing (empty buffer + up arrow) is unchanged — all entries are shown including duplicates.
+
+To disable prefix navigation while keeping ghost text:
+
+```ruby
+IRB.conf[:USE_PREFIX_HISTORY_NAVIGATION] = false
+```
+
+Or via environment variable:
+
+```sh
+export IRB_PREFIX_HISTORY_NAVIGATION=0
+```
 
 ## Configuration
 
@@ -60,13 +96,39 @@ Or via environment variable:
 export IRB_AUTOSUGGESTIONS=0
 ```
 
+### Colors
+
+Syntax-colored ghost text is **enabled by default** when `IRB::Color` is available and `IRB.conf[:USE_COLORIZE]` is
+true.
+
+To disable colored ghost text (falls back to plain gray):
+
+```ruby
+IRB.conf[:USE_COLORIZE] = false
+```
+
+Or from command line:
+
+```sh
+irb --nocolorize
+```
+
+> [!NOTE] Colorized ghost rendering may behave differently across terminal emulators, Ruby versions, and IRB color
+> schemes. If you notice visual artifacts (e.g., wrong colors, underlines, or unusual brightness), try disabling the
+> feature or switch to the gray fallback or create new issue.
+
 ### How it works
 
 - Each keystroke queries `Reline::HISTORY` for the most recent entry whose prefix matches the current buffer.
-- The suggestion is rendered inline as gray (`\e[90m`) text without modifying the buffer.
+- The suggestion is rendered inline as ghost text without modifying the buffer.
+- When available, the ghost uses `IRB::Color.colorize_code` to match IRB's syntax colors, dimmed via ANSI escape codes
+  for visual distinction.
 - Extra ghost lines (for multiline history entries) are drawn below the prompt.
-- `\e[J` clears stale ghost artifacts from the viewport.
+- Ghost artifacts are cleared each frame using cursor save/restore (`\e[s`/`\e[u`) and per-line clearing (`\e[2K`),
+  avoiding `\e[J` which interfered with Reline's cursor tracking.
 - Right arrow triggers `ed_next_char`, which replaces the buffer with the ghost text.
+- Up/down arrows use prefix-filtered navigation when the buffer is non-empty, falling back to unfiltered browsing
+  when nothing was typed.
 
 ## Development
 
