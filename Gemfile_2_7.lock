@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    irb-autosuggestions (0.2.0)
+    irb-autosuggestions (0.2.1)
       reline
 
 GEM
@@ -70,8 +70,8 @@ GEM
     yard (0.9.44)
 
 PLATFORMS
-  x86_64-linux
   arm64-darwin-25
+  x86_64-linux
 
 DEPENDENCIES
   docscribe
