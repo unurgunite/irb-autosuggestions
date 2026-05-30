@@ -3,10 +3,11 @@
 # Creates isolated Bundler environments per Ruby+IRB combination.
 #
 # Usage:
-#   bin/test-with-irb              # test all supported IRB versions
-#   bin/test-with-irb 1.6.2        # test a single version
-#   bin/test-with-irb -l           # list available IRB versions
-#   bin/test-with-irb -c           # clear cached installations
+#   bin/test-with-irb               # test all supported IRB versions
+#   bin/test-with-irb 1.6.2         # test a single version
+#   bin/test-with-irb -l            # list available IRB versions
+#   bin/test-with-irb -c            # clear cached installations
+#   bin/test-with-irb -s            # setup only, skip tests (for manual inspection)
 set -euo pipefail
 IFS=$'\n\t'
 
@@ -29,33 +30,23 @@ IRB_VERSIONS=(
   1.16.0 1.17.0 1.18.0
 )
 
-if [ "${1:-}" = "-l" ]; then
-  printf '%s\n' "${IRB_VERSIONS[@]}"
-  exit 0
-fi
+SETUP_ONLY=false
+case "${1:-}" in
+  -l) printf '%s\n' "${IRB_VERSIONS[@]}"; exit 0 ;;
+  -c) rm -rf "$CACHE"; echo "Cache cleared"; exit 0 ;;
+  -s) SETUP_ONLY=true; shift ;;
+esac
 
-if [ "${1:-}" = "-c" ]; then
-  rm -rf "$CACHE"
-  echo "Cache cleared"
-  exit 0
-fi
-
-# Detect a working bundler version. `bundle --version` may fail on Ruby 2.7
-# when bundler 4.x is also installed. Fall back to Ruby‑major‑version heuristics.
+# Detect a working bundler version. Ruby ships with a specific bundler per
+# major version; prefer that over whatever `bundle --version` reports (which
+# may pick an incompatible newer bundler installed as a gem).
 detect_bundler() {
-  if bundle --version &>/dev/null; then
-    bundle --version 2>/dev/null | grep -Eo '([0-9]+\.)+[0-9]+' | head -1
-    return
-  fi
-  # Multiple bundlers installed: prefer one matching Ruby's major version
-  local ver
-  ver="$(ruby -e 'print RUBY_VERSION')"
-  case "$ver" in
-    2.7*) echo "2.4.22" ;;
-    3.*)  echo "2.5.23" ;;
-    4.*)  echo "4.0.11" ;;
-    *)    gem list bundler --local 2>/dev/null | grep -Eo '([0-9]+\.)+[0-9]+' | head -1 ;;
-  esac
+  ruby -e '
+    specs = Gem::Specification.find_all_by_name("bundler")
+    # Prefer the default gem (ships with this Ruby), fall back to latest
+    default = specs.find(&:default_gem?)
+    puts(default&.version || specs.map(&:version).max)
+  ' 2>/dev/null || bundle --version 2>/dev/null | grep -Eo '([0-9]+\.)+[0-9]+' | head -1 || true
 }
 BUNDLER_VERSION="$(detect_bundler)"
 echo "Using bundler $BUNDLER_VERSION"
@@ -88,18 +79,29 @@ GEMFILE
   echo "--- IRB $VERSION (Ruby $RUBY_VERSION) ---"
   (
     cd "$DIR"
+    echo "$RUBY_VERSION" > .ruby-version
     if [ ! -f Gemfile.lock ]; then
       BUNDLER_VERSION="$BUNDLER_VERSION" bundle install --quiet 2>&1
     fi
-    BUNDLER_VERSION="$BUNDLER_VERSION" bundle exec rspec --require "$ROOT/spec/spec_helper" "$ROOT/spec" --no-color 2>&1
+    if [ "$SETUP_ONLY" = false ]; then
+      BUNDLER_VERSION="$BUNDLER_VERSION" bundle exec rspec --require "$ROOT/spec/spec_helper" "$ROOT/spec" --no-color 2>&1
+    else
+      echo "  Setup complete. Run: cd $DIR && BUNDLE_GEMFILE=\"$GEMFILE\" bundle && BUNDLE_GEMFILE=\"$GEMFILE\" bundle exec irb"
+    fi
   )
-  STATUS=$?
-  if [ $STATUS -eq 0 ]; then
-    PASS=$((PASS + 1))
-  else
-    FAIL=$((FAIL + 1))
+  if [ "$SETUP_ONLY" = false ]; then
+    STATUS=$?
+    if [ $STATUS -eq 0 ]; then
+      PASS=$((PASS + 1))
+    else
+      FAIL=$((FAIL + 1))
+    fi
   fi
 done
 
-echo "=== Results: $PASS passed, $FAIL failed ==="
-exit $FAIL
+if [ "$SETUP_ONLY" = true ]; then
+  echo "=== Setup complete for ${#VERSIONS[@]} versions ==="
+else
+  echo "=== Results: $PASS passed, $FAIL failed ==="
+  exit $FAIL
+fi

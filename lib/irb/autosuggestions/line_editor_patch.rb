@@ -109,8 +109,8 @@ module Irb
       end
 
       # Clears ghost from the previous frame: inline text from buffer end
-      # to end of line, and each extra line below. Uses cursor save/restore
-      # so it does not interfere with Reline's cursor tracking.
+      # to end of line, and each extra line below. Restores cursor column
+      # afterwards so Reline's cursor tracking is not disturbed.
       #
       # @private
       # @return [void]
@@ -118,10 +118,11 @@ module Irb
         clear_inline_ghost
         return unless @ghost_line_count&.positive?
 
+        origin_column = cursor_column_at_byte_pointer
         output = Reline.core.instance_variable_get(:@output)
-        output.write("\e[s")
         @ghost_line_count.times { output.write("\e[1B\e[2K") }
-        output.write("\e[u")
+        output.write("\e[#{@ghost_line_count}A")
+        output.write("\e[0G\e[#{origin_column}C")
       end
 
       # Clears inline ghost text from the buffer end to end of line.
@@ -132,12 +133,10 @@ module Irb
         return unless @has_inline_ghost
 
         output = Reline.core.instance_variable_get(:@output)
-        prompt_width = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
-        current_line = @buffer_of_lines[@line_index] || ''
-        buf_end = prompt_width + Reline::Unicode.calculate_width(current_line)
-        output.write("\e[s")
-        output.write("\e[0G\e[#{buf_end}C\e[K")
-        output.write("\e[u")
+        buf_end = move_to_buffer_end
+        origin_column = cursor_column_at_byte_pointer
+        output.write("#{buf_end}\e[K")
+        output.write("\e[0G\e[#{origin_column}C")
         @has_inline_ghost = false
       end
 
@@ -184,20 +183,6 @@ module Irb
         remove_instance_variable(:@prefix_buffer)
       end
 
-      # Checks whether autosuggestions are enabled via IRB.conf or env var.
-      #
-      # @private
-      # @return [Boolean]
-      def enabled?
-        case ENV.fetch(ENV_KEY, nil)
-        when '0' then false
-        when '1' then true
-        else
-          val = IRB.conf[CONFIG_KEY]
-          val.nil? || val
-        end
-      end
-
       # Whether prefix-filtered history navigation is enabled.
       # Falls back to the value of +enabled?+ when not explicitly set.
       #
@@ -210,6 +195,20 @@ module Irb
         else
           val = IRB.conf[CONFIG_NAV_KEY]
           val.nil? ? enabled? : val
+        end
+      end
+
+      # Checks whether autosuggestions are enabled via IRB.conf or env var.
+      #
+      # @private
+      # @return [Boolean]
+      def enabled?
+        case ENV.fetch(ENV_KEY, nil)
+        when '0' then false
+        when '1' then true
+        else
+          val = IRB.conf[CONFIG_KEY]
+          val.nil? || val
         end
       end
 
@@ -325,8 +324,8 @@ module Irb
       end
 
       # Writes the ghost text (inline + extra lines) to terminal output.
-      # Uses cursor save/restore so Reline's cursor position is preserved
-      # (fixes character erasing on left/right arrow movement).
+      # Saves and restores cursor column so Reline's cursor tracking
+      # (used for left/right arrow positioning) is not disturbed.
       #
       # If +suggestion+ is provided and colorization is enabled, the ghost
       # is rendered with syntax highlighting via IRB::Color.
@@ -335,17 +334,19 @@ module Irb
       # @param [String] ghost The ghost text (suffix of the suggestion).
       # @param [String, nil] suggestion The full matching history entry.
       # @return [void]
-      def render_ghost(ghost, suggestion = nil)
+      def render_ghost(ghost, suggestion = nil) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
         output = Reline.core.instance_variable_get(:@output)
         display_lines = ghost_display_lines(ghost, suggestion)
         @ghost_line_count = display_lines.size - 1
         @has_inline_ghost = true
 
-        output.write("\e[s#{move_to_buffer_end}")
+        output.write(move_to_buffer_end)
         first_line = display_lines.first
         output.write(first_line) if first_line && !first_line.empty?
         write_extra_ghost_lines(display_lines.drop(1))
-        output.write("\e[u")
+        origin_column = cursor_column_at_byte_pointer
+        output.write("\e[#{@ghost_line_count}A") if @ghost_line_count.positive?
+        output.write("\e[0G\e[#{origin_column}C")
         output.flush
       end
 
@@ -459,7 +460,18 @@ module Irb
         end
       end
 
-      # Restores the cursor to the end of the buffer after ghost rendering.
+      # Returns the terminal column where the cursor should sit (after the
+      # prompt and currently typed text at +@byte_pointer+).
+      #
+      # @private
+      # @return [Integer]
+      def cursor_column_at_byte_pointer
+        prompt_width = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
+        current_line = @buffer_of_lines[@line_index] || ''
+        prompt_width + Reline::Unicode.calculate_width(current_line[0...@byte_pointer])
+      end
+
+      # Moves cursor to the end of the buffer line (for writing inline ghost).
       #
       # @private
       # @return [String]
