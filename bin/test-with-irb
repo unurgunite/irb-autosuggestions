@@ -10,26 +10,13 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+# CI may set BUNDLE_GEMFILE for the main test job; unset so the script's
+# per‑version Gemfiles under $CACHE are used instead.
+unset BUNDLE_GEMFILE
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CACHE="$ROOT/.irb-test-cache"
 RUBY_VERSION="$(ruby -e 'print RUBY_VERSION')"
-
-# Detect bundler version: prefer Gemfile.lock, fall back to Ruby version-based detection
-BUNDLER_VERSION="$(ruby -e '
-  lockfile = File.join(ARGV[0], "Gemfile.lock")
-  if File.exist?(lockfile)
-    File.read(lockfile)[/BUNDLED WITH\n\s+(\S+)/, 1]
-  end
-' "$ROOT" 2>/dev/null || true)"
-if [ -z "$BUNDLER_VERSION" ]; then
-  case "$(ruby -e 'print RUBY_VERSION')" in
-    2.7*) BUNDLER_VERSION="2.4.22" ;;
-    3.0*|3.1*|3.2*|3.3*|3.4*) BUNDLER_VERSION="2.5.23" ;;
-    4.0*) BUNDLER_VERSION="4.0.11" ;;
-    *) BUNDLER_VERSION="" ;;
-  esac
-fi
-echo "Using bundler $BUNDLER_VERSION"
 
 IRB_VERSIONS=(
   0.9.6 1.0.0 1.1.0 1.1.1 1.2.0 1.2.1 1.2.2 1.2.3 1.2.4
@@ -53,9 +40,29 @@ if [ "${1:-}" = "-c" ]; then
   exit 0
 fi
 
-IRB_VERSION="${1:-}"
-if [ -n "$IRB_VERSION" ]; then
-  VERSIONS=("$IRB_VERSION")
+# Detect a working bundler version. `bundle --version` may fail on Ruby 2.7
+# when bundler 4.x is also installed. Fall back to Ruby‑major‑version heuristics.
+detect_bundler() {
+  if bundle --version &>/dev/null; then
+    bundle --version 2>/dev/null | grep -Eo '([0-9]+\.)+[0-9]+' | head -1
+    return
+  fi
+  # Multiple bundlers installed: prefer one matching Ruby's major version
+  local ver
+  ver="$(ruby -e 'print RUBY_VERSION')"
+  case "$ver" in
+    2.7*) echo "2.4.22" ;;
+    3.*)  echo "2.5.23" ;;
+    4.*)  echo "4.0.11" ;;
+    *)    gem list bundler --local 2>/dev/null | grep -Eo '([0-9]+\.)+[0-9]+' | head -1 ;;
+  esac
+}
+BUNDLER_VERSION="$(detect_bundler)"
+echo "Using bundler $BUNDLER_VERSION"
+
+# Accept explicit version args; default to all supported versions
+if [ $# -gt 0 ]; then
+  VERSIONS=("$@")
 else
   VERSIONS=("${IRB_VERSIONS[@]}")
 fi

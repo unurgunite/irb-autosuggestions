@@ -35,3 +35,6 @@ jobs:
 
       - name: RSpec
         run: bundle exec rspec
+
+      - name: Test with different IRB versions
+        run: bin/test-with-irb 0.9.6 1.2.6 1.4.2 1.6.2 1.8.3 1.11.0 1.14.0 1.18.0
