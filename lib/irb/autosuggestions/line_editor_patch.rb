@@ -36,15 +36,13 @@ module Irb
         super
       end
 
-      private
-
       # Injects ghost text into terminal output after Reline finishes rendering.
-      # Clears any previous ghost text (inline and multi-line) first,
-      # then renders the new ghost suggestion.
+      # Must be public because Reline::Core calls +rerender+ externally.
+      # Works on both Reline 0.3.x (rerender is the main rendering entry) and
+      # Reline 0.4+ (rerender calls render internally).
       #
-      # @private
       # @return [Object] The result of +super+.
-      def render(...)
+      def rerender
         result = super
         if enabled?
           clear_previous_ghost
@@ -52,6 +50,8 @@ module Irb
         end
         result
       end
+
+      private
 
       # Prefix-filtered up-arrow history navigation.
       #
@@ -325,6 +325,8 @@ module Irb
       end
 
       # Writes the ghost text (inline + extra lines) to terminal output.
+      # Uses cursor save/restore so Reline's cursor position is preserved
+      # (fixes character erasing on left/right arrow movement).
       #
       # If +suggestion+ is provided and colorization is enabled, the ghost
       # is rendered with syntax highlighting via IRB::Color.
@@ -339,10 +341,11 @@ module Irb
         @ghost_line_count = display_lines.size - 1
         @has_inline_ghost = true
 
+        output.write("\e[s#{move_to_buffer_end}")
         first_line = display_lines.first
         output.write(first_line) if first_line && !first_line.empty?
         write_extra_ghost_lines(display_lines.drop(1))
-        restore_cursor_after(display_lines)
+        output.write("\e[u")
         output.flush
       end
 
@@ -459,17 +462,12 @@ module Irb
       # Restores the cursor to the end of the buffer after ghost rendering.
       #
       # @private
-      # @param [Array<String>] lines The ghost split into lines.
-      # @return [void]
-      def restore_cursor_after(lines)
-        extra_count = lines.size - 1
+      # @return [String]
+      def move_to_buffer_end
         prompt_width = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
-        pos = prompt_width + (@buffer_of_lines[@line_index] || '').length
-        output = Reline.core.instance_variable_get(:@output)
-
-        output.write("\e[#{extra_count}A") if extra_count.positive?
-        output.write("\e[0G")
-        output.write("\e[#{pos}C")
+        current_line = @buffer_of_lines[@line_index] || ''
+        buf_end = prompt_width + Reline::Unicode.calculate_width(current_line)
+        "\e[0G\e[#{buf_end}C"
       end
     end
   end
