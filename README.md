@@ -113,7 +113,8 @@ Or from command line:
 irb --nocolorize
 ```
 
-> [!NOTE] Colorized ghost rendering may behave differently across terminal emulators, Ruby versions, and IRB color
+> [!NOTE]
+> Colorized ghost rendering may behave differently across terminal emulators, Ruby versions, and IRB color
 > schemes. If you notice visual artifacts (e.g., wrong colors, underlines, or unusual brightness), try disabling the
 > feature or switch to the gray fallback or create new issue.
 
