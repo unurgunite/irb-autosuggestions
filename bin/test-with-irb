@@ -5,19 +5,100 @@
 # Usage:
 #   bin/test-with-irb               # test all supported IRB versions
 #   bin/test-with-irb 1.6.2         # test a single version
+#   bin/test-with-irb 1.6.2 1.8.3   # test multiple versions
 #   bin/test-with-irb -l            # list available IRB versions
 #   bin/test-with-irb -c            # clear cached installations
-#   bin/test-with-irb -s            # setup only, skip tests (for manual inspection)
+#   bin/test-with-irb -s            # setup only, skip tests
+
 set -euo pipefail
 IFS=$'\n\t'
-
-# CI may set BUNDLE_GEMFILE for the main test job; unset so the script's
-# per‑version Gemfiles under $CACHE are used instead.
-unset BUNDLE_GEMFILE
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CACHE="$ROOT/.irb-test-cache"
 RUBY_VERSION="$(ruby -e 'print RUBY_VERSION')"
+
+# Keep the job-level Gemfile (set by CI) ONLY to read its lockfile's BUNDLED WITH.
+JOB_GEMFILE="${BUNDLE_GEMFILE:-Gemfile}"
+if [[ "$JOB_GEMFILE" != /* ]]; then
+  JOB_GEMFILE="$ROOT/$JOB_GEMFILE"
+fi
+JOB_LOCKFILE="${JOB_GEMFILE}.lock"
+
+# Now unset so per-version Gemfiles under $CACHE are used.
+unset BUNDLE_GEMFILE
+
+version_lt() {
+  ruby -e 'require "rubygems"; exit(Gem::Version.new(ARGV[0]) < Gem::Version.new(ARGV[1]) ? 0 : 1)' "$1" "$2"
+}
+
+bundler_from_lockfile() {
+  local lockfile="$1"
+  [ -f "$lockfile" ] || return 0
+  awk '
+    $0 == "BUNDLED WITH" {getline; gsub(/^[ \t]+/, "", $0); print; exit}
+  ' "$lockfile"
+}
+
+fallback_bundler_for_ruby() {
+  case "$1" in
+    2.7*) echo "2.4.22" ;;  # bundler 2.4.22 requires Ruby >= 2.6.0
+    3.0*|3.1*) echo "2.5.23" ;; # bundler 2.5.23 requires Ruby >= 3.0.0
+    *) echo "" ;;
+  esac
+}
+
+LOCKED_BUNDLER="$(bundler_from_lockfile "$JOB_LOCKFILE")"
+if [ -z "${LOCKED_BUNDLER:-}" ]; then
+  LOCKED_BUNDLER="$(bundler_from_lockfile "$ROOT/Gemfile.lock")"
+fi
+
+BUNDLER_VERSION="${LOCKED_BUNDLER:-}"
+FALLBACK="$(fallback_bundler_for_ruby "$RUBY_VERSION")"
+
+# Hard compatibility rule:
+# bundler 4.x requires Ruby >= 3.2.0, so on Ruby 3.0/3.1 we must not use it.
+if [ -n "${BUNDLER_VERSION:-}" ] && [[ "$BUNDLER_VERSION" =~ ^4\. ]]; then
+  if version_lt "$RUBY_VERSION" "3.2.0"; then
+    echo "Bundler $BUNDLER_VERSION (from lockfile) requires Ruby >= 3.2.0; current Ruby is $RUBY_VERSION. Falling back to $FALLBACK."
+    BUNDLER_VERSION="$FALLBACK"
+  fi
+fi
+
+# If still empty, just use fallback (covers Ruby 2.7/3.0/3.1)
+if [ -z "${BUNDLER_VERSION:-}" ]; then
+  BUNDLER_VERSION="$FALLBACK"
+fi
+
+if [ -z "${BUNDLER_VERSION:-}" ]; then
+  echo "ERROR: Could not choose a compatible Bundler (Ruby $RUBY_VERSION, lockfile $JOB_LOCKFILE, locked bundler '${LOCKED_BUNDLER:-<none>}')." >&2
+  exit 1
+fi
+
+echo "Using Ruby $RUBY_VERSION"
+if [ -n "${LOCKED_BUNDLER:-}" ]; then
+  echo "Lockfile bundler: $LOCKED_BUNDLER (from $JOB_LOCKFILE)"
+fi
+echo "Using bundler: $BUNDLER_VERSION"
+
+install_bundler() {
+  local v="$1"
+  if gem list -i bundler -v "$v" >/dev/null 2>&1; then
+    return 0
+  fi
+  gem install --no-document bundler -v "$v"
+}
+
+# Try chosen bundler; if it fails for any reason, fallback to a safe one for this Ruby.
+if ! install_bundler "$BUNDLER_VERSION"; then
+  if [ -n "${FALLBACK:-}" ] && [ "$FALLBACK" != "$BUNDLER_VERSION" ]; then
+    echo "WARN: failed to install bundler $BUNDLER_VERSION; retrying with fallback bundler $FALLBACK" >&2
+    BUNDLER_VERSION="$FALLBACK"
+    install_bundler "$BUNDLER_VERSION"
+  else
+    echo "ERROR: failed to install bundler $BUNDLER_VERSION and no fallback available" >&2
+    exit 1
+  fi
+fi
 
 IRB_VERSIONS=(
   0.9.6 1.0.0 1.1.0 1.1.1 1.2.0 1.2.1 1.2.2 1.2.3 1.2.4
@@ -33,25 +114,10 @@ IRB_VERSIONS=(
 SETUP_ONLY=false
 case "${1:-}" in
   -l) printf '%s\n' "${IRB_VERSIONS[@]}"; exit 0 ;;
-  -c) rm -rf "$CACHE"; echo "Cache cleared"; exit 0 ;;
+  -c) rm -rf "$CACHE"; echo "Cache cleared: $CACHE"; exit 0 ;;
   -s) SETUP_ONLY=true; shift ;;
 esac
 
-# Detect a working bundler version. Ruby ships with a specific bundler per
-# major version; prefer that over whatever `bundle --version` reports (which
-# may pick an incompatible newer bundler installed as a gem).
-detect_bundler() {
-  ruby -e '
-    specs = Gem::Specification.find_all_by_name("bundler")
-    # Prefer the default gem (ships with this Ruby), fall back to latest
-    default = specs.find(&:default_gem?)
-    puts(default&.version || specs.map(&:version).max)
-  ' 2>/dev/null || bundle --version 2>/dev/null | grep -Eo '([0-9]+\.)+[0-9]+' | head -1 || true
-}
-BUNDLER_VERSION="$(detect_bundler)"
-echo "Using bundler $BUNDLER_VERSION"
-
-# Accept explicit version args; default to all supported versions
 if [ $# -gt 0 ]; then
   VERSIONS=("$@")
 else
@@ -60,6 +126,7 @@ fi
 
 PASS=0
 FAIL=0
+
 for VERSION in "${VERSIONS[@]}"; do
   DIR="$CACHE/$RUBY_VERSION/$VERSION"
   GEMFILE="$DIR/Gemfile"
@@ -71,31 +138,52 @@ source 'https://rubygems.org'
 
 gem 'irb', '$VERSION'
 gem 'rspec'
-gem 'rspec-its'
 gem 'irb-autosuggestions', path: '$ROOT'
 GEMFILE
   fi
 
   echo "--- IRB $VERSION (Ruby $RUBY_VERSION) ---"
-  (
+
+  LOG="$DIR/ci.log"
+  rm -f "$LOG"
+
+  if (
     cd "$DIR"
     echo "$RUBY_VERSION" > .ruby-version
-    if [ ! -f Gemfile.lock ]; then
-      gem install bundler
-      BUNDLER_VERSION="$BUNDLER_VERSION" bundle install --quiet 2>&1
-    fi
+
+    export BUNDLE_GEMFILE="$GEMFILE"
+
+    bundle _${BUNDLER_VERSION}_ config set --local path "vendor/bundle" >/dev/null
+    bundle _${BUNDLER_VERSION}_ check >/dev/null 2>&1 || bundle _${BUNDLER_VERSION}_ install
+
     if [ "$SETUP_ONLY" = false ]; then
-      BUNDLER_VERSION="$BUNDLER_VERSION" bundle exec rspec --require "$ROOT/spec/spec_helper" "$ROOT/spec" --no-color 2>&1
+      bundle _${BUNDLER_VERSION}_ exec rspec \
+        --require "$ROOT/spec/spec_helper" \
+        "$ROOT/spec" \
+        --no-color
     else
-      echo "  Setup complete. Run: cd $DIR && BUNDLE_GEMFILE=\"$GEMFILE\" bundle && BUNDLE_GEMFILE=\"$GEMFILE\" bundle exec irb"
+      echo "Setup complete. Run:"
+      echo "  cd \"$DIR\""
+      echo "  BUNDLE_GEMFILE=\"$GEMFILE\" bundle _${BUNDLER_VERSION}_ install"
+      echo "  BUNDLE_GEMFILE=\"$GEMFILE\" bundle _${BUNDLER_VERSION}_ exec irb"
     fi
-  )
-  if [ "$SETUP_ONLY" = false ]; then
-    STATUS=$?
-    if [ $STATUS -eq 0 ]; then
+  ) >"$LOG" 2>&1; then
+    if [ "$SETUP_ONLY" = false ]; then
       PASS=$((PASS + 1))
-    else
+    fi
+  else
+    if [ "$SETUP_ONLY" = false ]; then
       FAIL=$((FAIL + 1))
+      echo "FAILED: IRB $VERSION (Ruby $RUBY_VERSION)" >&2
+      echo "---- tail($LOG) ----" >&2
+      tail -n 200 "$LOG" >&2
+      echo "--------------------" >&2
+    else
+      echo "SETUP FAILED: IRB $VERSION (Ruby $RUBY_VERSION)" >&2
+      echo "---- tail($LOG) ----" >&2
+      tail -n 200 "$LOG" >&2
+      echo "--------------------" >&2
+      exit 1
     fi
   fi
 done
