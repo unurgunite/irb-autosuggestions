@@ -81,6 +81,7 @@ GEMFILE
     cd "$DIR"
     echo "$RUBY_VERSION" > .ruby-version
     if [ ! -f Gemfile.lock ]; then
+      gem install bundler
       BUNDLER_VERSION="$BUNDLER_VERSION" bundle install --quiet 2>&1
     fi
     if [ "$SETUP_ONLY" = false ]; then
