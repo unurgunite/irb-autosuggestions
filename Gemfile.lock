@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    irb-autosuggestions (0.2.1)
+    irb-autosuggestions (0.2.2)
       reline
 
 GEM
@@ -9,14 +9,13 @@ GEM
   specs:
     ast (2.4.3)
     diff-lcs (1.6.2)
-    docscribe (1.3.3)
+    docscribe (1.5.1)
       parser (>= 3.3)
       prism (~> 1.8)
     io-console (0.8.2)
-    json (2.19.5)
+    json (2.20.0)
     language_server-protocol (3.17.0.5)
     lint_roller (1.1.0)
-    logger (1.7.0)
     parallel (1.28.0)
     parser (3.3.11.1)
       ast (~> 2.4.1)
@@ -25,8 +24,6 @@ GEM
     racc (1.8.1)
     rainbow (3.1.1)
     rake (13.4.2)
-    rbs (3.6.1)
-      logger
     regexp_parser (2.12.0)
     reline (0.6.3)
       io-console (~> 0.5)
@@ -43,7 +40,7 @@ GEM
       diff-lcs (>= 1.2.0, < 2.0)
       rspec-support (~> 3.13.0)
     rspec-support (3.13.7)
-    rubocop (1.86.2)
+    rubocop (1.88.1)
       json (~> 2.3)
       language_server-protocol (~> 3.17.0.2)
       lint_roller (~> 1.1.0)
@@ -60,10 +57,11 @@ GEM
     rubocop-rake (0.7.1)
       lint_roller (~> 1.1)
       rubocop (>= 1.72.1)
-    rubocop-rspec (3.9.0)
+    rubocop-rspec (3.10.2)
       lint_roller (~> 1.1)
-      rubocop (~> 1.81)
-    rubocop-sorted_methods_by_call (1.2.2)
+      regexp_parser (>= 2.0)
+      rubocop (~> 1.86, >= 1.86.2)
+    rubocop-sorted_methods_by_call (1.2.3)
       lint_roller
       rubocop (>= 1.72.0)
     ruby-progressbar (1.13.0)
@@ -82,7 +80,6 @@ DEPENDENCIES
   docscribe
   irb-autosuggestions!
   rake
-  rbs (~> 3.6.0)
   rspec (~> 3.0)
   rubocop
   rubocop-rake
@@ -91,4 +88,4 @@ DEPENDENCIES
   yard (>= 0.9.38)
 
 BUNDLED WITH
-  4.0.11
+   2.4.22
