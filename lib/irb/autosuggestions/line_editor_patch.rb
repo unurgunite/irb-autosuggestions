@@ -55,13 +55,17 @@ module Irb
       # Works on both Reline 0.3.x (rerender is the main rendering entry) and
       # Reline 0.4+ (rerender calls render internally).
       #
+      # Ghost is cleared BEFORE super to avoid cursor-position-dependent
+      # escapes targeting wrong lines after accept_suggestion changes buffer.
+      #
       # @return [Object] The result of +super+.
       def rerender
+        clear_previous_ghost if enabled?
+
         result = super
-        if enabled?
-          clear_previous_ghost
-          render_ghost_suggestion
-        end
+
+        render_ghost_suggestion if enabled?
+
         result
       end
 
