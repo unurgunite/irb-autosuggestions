@@ -362,16 +362,26 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
     end
   end
 
-  describe '#input_key with right arrow accept' do
-    let(:key) { double(method_symbol: :ed_next_char) }
+  describe '#input_key with accept_key' do
+    let(:right_key) { double(method_symbol: :ed_next_char) }
+    let(:tab_key) { double(method_symbol: :ed_insert, char: "\t") }
+    let(:ctrl_e_key) { double(method_symbol: :ed_end_of_line) }
 
-    it 'calls super for non-right-arrow keys' do
-      non_arrow = double(method_symbol: :ed_prev_char)
-      expect(editor.send(:input_key, non_arrow)).to eq(:original)
+    it 'calls super for non-matching keys' do
+      non_match = double(method_symbol: :ed_prev_char)
+      expect(editor.send(:input_key, non_match)).to eq(:original)
     end
 
     it 'calls super when no history match' do
-      expect(editor.send(:input_key, key)).to eq(:original)
+      expect(editor.send(:input_key, right_key)).to eq(:original)
+    end
+
+    it 'calls super for tab when no suggestion' do
+      expect(editor.send(:input_key, tab_key)).to eq(:original)
+    end
+
+    it 'calls super for ctrl+e when no suggestion' do
+      expect(editor.send(:input_key, ctrl_e_key)).to eq(:original)
     end
 
     context 'with matching history' do
@@ -389,16 +399,203 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
         editor.instance_variable_set(:@buffer_of_lines, ['def '])
       end
 
-      it 'accepts the full multiline suggestion' do
-        editor.send(:input_key, key)
+      it 'accepts on right arrow' do
+        editor.send(:input_key, right_key)
+        expect(editor.instance_variable_get(:@buffer_of_lines))
+          .to eq(['def foo', '  :foo', 'end'])
+      end
+
+      it 'accepts on tab' do
+        editor.send(:input_key, tab_key)
+        expect(editor.instance_variable_get(:@buffer_of_lines))
+          .to eq(['def foo', '  :foo', 'end'])
+      end
+
+      it 'accepts on ctrl+e' do
+        editor.send(:input_key, ctrl_e_key)
         expect(editor.instance_variable_get(:@buffer_of_lines))
           .to eq(['def foo', '  :foo', 'end'])
       end
 
       it 'sets byte_pointer to the last suggestion line size' do
-        editor.send(:input_key, key)
+        editor.send(:input_key, right_key)
         expect(editor.instance_variable_get(:@byte_pointer)).to eq(3)
       end
+    end
+
+    context 'with multiline suggestion (10+ lines)' do
+      around do |example|
+        original = Reline::HISTORY.to_a
+        Reline::HISTORY.clear
+        Reline::HISTORY << "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\nline11"
+        example.run
+      ensure
+        Reline::HISTORY.clear
+        original.each { |h| Reline::HISTORY << h }
+      end
+
+      before do
+        editor.instance_variable_set(:@buffer_of_lines, ['line'])
+      end
+
+      it 'accepts multiline suggestion buffer' do
+        editor.send(:input_key, right_key)
+        expect(editor.instance_variable_get(:@buffer_of_lines))
+          .to eq(%w[line1 line2 line3 line4 line5 line6 line7 line8 line9 line10 line11])
+      end
+
+      it 'sets line_index to last line' do
+        editor.send(:input_key, right_key)
+        expect(editor.instance_variable_get(:@line_index)).to eq(10)
+      end
+
+      it 'sets byte_pointer to last line size' do
+        editor.send(:input_key, right_key)
+        expect(editor.instance_variable_get(:@byte_pointer)).to eq(6)
+      end
+
+      it 'clears ghost state after multiline accept' do
+        editor.send(:input_key, right_key)
+        expect(editor.instance_variable_get(:@has_inline_ghost)).to be_falsey
+      end
+
+      it 'resets ghost_line_count after multiline accept' do
+        editor.send(:input_key, right_key)
+        expect(editor.instance_variable_get(:@ghost_line_count)).to eq(0)
+      end
+    end
+
+    context 'when buffer matches suggestion exactly' do
+      around do |example|
+        original = Reline::HISTORY.to_a
+        Reline::HISTORY.clear
+        Reline::HISTORY << "def foo\n  :foo\nend"
+        example.run
+      ensure
+        Reline::HISTORY.clear
+        original.each { |h| Reline::HISTORY << h }
+      end
+
+      it 'does not accept when buffer equals suggestion' do
+        editor.instance_variable_set(:@buffer_of_lines, ["def foo\n  :foo\nend"])
+        editor.send(:input_key, right_key)
+        expect(editor.instance_variable_get(:@buffer_of_lines))
+          .to eq(["def foo\n  :foo\nend"])
+      end
+
+      it 'falls through to super when buffer equals suggestion' do
+        editor.instance_variable_set(:@buffer_of_lines, ["def foo\n  :foo\nend"])
+        expect(editor.send(:input_key, right_key)).to eq(:original)
+      end
+    end
+
+    it 'Enter key never triggers acceptance' do
+      Reline::HISTORY << 'some_command'
+      editor.instance_variable_set(:@buffer_of_lines, ['some_c'])
+      enter_key = double(method_symbol: :ed_newline)
+      expect(editor.send(:input_key, enter_key)).to eq(:original)
+    end
+
+    context 'with custom accept keys config' do
+      around do |example|
+        original = IRB.conf[described_class::ACCEPT_KEYS_CONFIG]
+        IRB.conf[described_class::ACCEPT_KEYS_CONFIG] = %i[ed_prev_char]
+        example.run
+      ensure
+        if original.nil?
+          IRB.conf.delete(described_class::ACCEPT_KEYS_CONFIG)
+        else
+          IRB.conf[described_class::ACCEPT_KEYS_CONFIG] = original
+        end
+      end
+
+      it 'accepts on configured key' do
+        Reline::HISTORY << 'hello'
+        editor.instance_variable_set(:@buffer_of_lines, ['hel'])
+
+        custom_key = double(method_symbol: :ed_prev_char)
+        editor.send(:input_key, custom_key)
+        expect(editor.instance_variable_get(:@buffer_of_lines)).to eq(['hello'])
+      end
+
+      it 'ignores keys not in config' do
+        Reline::HISTORY << 'hello'
+        editor.instance_variable_set(:@buffer_of_lines, ['hel'])
+
+        editor.send(:input_key, right_key)
+        expect(editor.instance_variable_get(:@buffer_of_lines)).to eq(['hel'])
+      end
+    end
+  end
+
+  describe '#accept_key?' do
+    let(:right_key) { double(method_symbol: :ed_next_char) }
+
+    it 'matches right arrow by default' do
+      expect(editor.send(:accept_key?, right_key)).to be true
+    end
+
+    it 'does not match non-accept key' do
+      key = double(method_symbol: :ed_prev_char)
+      expect(editor.send(:accept_key?, key)).to be false
+    end
+
+    it 'returns false for nil' do
+      expect(editor.send(:accept_key?, nil)).to be false
+    end
+
+    context 'with custom config' do
+      around do |example|
+        original = IRB.conf[described_class::ACCEPT_KEYS_CONFIG]
+        IRB.conf[described_class::ACCEPT_KEYS_CONFIG] = %i[ed_end_of_line]
+        example.run
+      ensure
+        if original.nil?
+          IRB.conf.delete(described_class::ACCEPT_KEYS_CONFIG)
+        else
+          IRB.conf[described_class::ACCEPT_KEYS_CONFIG] = original
+        end
+      end
+
+      it 'respects configured keys' do
+        key = double(method_symbol: :ed_end_of_line)
+        expect(editor.send(:accept_key?, key)).to be true
+      end
+    end
+  end
+
+  describe '#key_match?' do
+    it 'matches :ed_next_char against right arrow key' do
+      key = double(method_symbol: :ed_next_char)
+      expect(editor.send(:key_match?, key, :ed_next_char)).to be true
+    end
+
+    it 'matches :ed_end_of_line against ctrl+e key' do
+      key = double(method_symbol: :ed_end_of_line)
+      expect(editor.send(:key_match?, key, :ed_end_of_line)).to be true
+    end
+
+    it 'matches :tab against tab key' do
+      key = double(method_symbol: :ed_insert, char: "\t")
+      expect(editor.send(:key_match?, key, :tab)).to be true
+    end
+
+    it 'rejects tab key for non-tab symbol' do
+      key = double(method_symbol: :ed_insert, char: "\t")
+      expect(editor.send(:key_match?, key, :ed_next_char)).to be false
+    end
+
+    it 'rejects non-tab insert for :tab symbol' do
+      key = double(method_symbol: :ed_insert, char: 'a')
+      expect(editor.send(:key_match?, key, :tab)).to be false
+    end
+
+    it 'returns false for nil key' do
+      expect(editor.send(:key_match?, nil, :ed_next_char)).to be false
+    end
+
+    it 'returns false when key does not respond to method_symbol' do
+      expect(editor.send(:key_match?, Object.new, :ed_next_char)).to be false
     end
   end
 
@@ -572,6 +769,74 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
         lines = editor.send(:ghost_display_lines, 'foo', 'def foo')
         expect(lines).to eq(["\e[90mfoo\e[0m"])
       end
+    end
+  end
+
+  describe '#ghost_color' do
+    after do
+      IRB.conf.delete(described_class::GHOST_COLOR_CONFIG)
+      IRB.conf.delete(described_class::GHOST_STYLE_CONFIG)
+    end
+
+    it 'returns default gray by default' do
+      expect(editor.send(:ghost_color)).to eq("\e[90m")
+    end
+
+    it 'returns configured ANSI color' do
+      IRB.conf[described_class::GHOST_COLOR_CONFIG] = "\e[32m"
+      expect(editor.send(:ghost_color)).to eq("\e[32m")
+    end
+
+    it 'GHOST_STYLE takes precedence over GHOST_COLOR' do
+      IRB.conf[described_class::GHOST_COLOR_CONFIG] = "\e[32m"
+      IRB.conf[described_class::GHOST_STYLE_CONFIG] = { fg: :red }
+      expect(editor.send(:ghost_color)).to eq("\e[31m")
+    end
+  end
+
+  describe '#ghost_display_lines with custom color' do
+    after do
+      IRB.conf.delete(described_class::GHOST_COLOR_CONFIG)
+    end
+
+    it 'uses configured color instead of default gray' do
+      IRB.conf[described_class::GHOST_COLOR_CONFIG] = "\e[32m"
+      lines = editor.send(:ghost_display_lines, 'foo', nil)
+      expect(lines).to eq(["\e[32mfoo\e[0m"])
+    end
+
+    it 'uses custom color in fallback on error' do
+      IRB.conf[described_class::GHOST_COLOR_CONFIG] = "\e[31m"
+      allow(IRB::Color).to receive(:colorize_code).and_raise(StandardError)
+      lines = editor.send(:ghost_display_lines, 'foo', 'anything')
+      expect(lines).to eq(["\e[31mfoo\e[0m"])
+    end
+  end
+
+  describe '#resolve_ghost_style' do
+    it 'resolves fg color to ANSI code' do
+      expect(editor.send(:resolve_ghost_style, { fg: :red })).to eq("\e[31m")
+    end
+
+    it 'resolves bright color' do
+      expect(editor.send(:resolve_ghost_style, { fg: :bright_white })).to eq("\e[97m")
+    end
+
+    it 'resolves italic attribute' do
+      expect(editor.send(:resolve_ghost_style, { italic: true })).to eq("\e[3m")
+    end
+
+    it 'resolves bold attribute' do
+      expect(editor.send(:resolve_ghost_style, { bold: true })).to eq("\e[1m")
+    end
+
+    it 'combines fg and attributes' do
+      expect(editor.send(:resolve_ghost_style, { fg: :bright_black, italic: true }))
+        .to eq("\e[90;3m")
+    end
+
+    it 'handles empty hash' do
+      expect(editor.send(:resolve_ghost_style, {})).to eq("\e[m")
     end
   end
 

@@ -10,24 +10,39 @@ module Irb
       CONFIG_KEY: Symbol
       ENV_KEY: String
       RESET_COLOR: String
+      ACCEPT_KEYS_CONFIG: Symbol
+      DEFAULT_ACCEPT_KEYS: Array[Symbol]
+      GHOST_COLOR_CONFIG: Symbol
+      GHOST_STYLE_CONFIG: Symbol
+      DEFAULT_GHOST_COLOR: String
+      FG_MAP: Hash[Symbol, Integer]
+      ATTR_MAP: Hash[Symbol, Integer]
 
       @buffer_of_lines: Array[String]
       @byte_pointer: Integer
       @line_index: Integer
 
       def input_key: (untyped key) -> untyped
+      def rerender: () -> untyped
       def render: (*untyped) -> untyped
       def enabled?: () -> bool
+      def navigation_enabled?: () -> bool
       def use_colorize?: () -> bool
-      def right_arrow?: (untyped key) -> bool
+      def accept_key?: (untyped key) -> bool
+      def key_match?: (untyped key, Symbol config_symbol) -> bool
+      def ghost_color: () -> String
+      def resolve_ghost_style: (Hash[Symbol, untyped] hash) -> String
+      def render_ghost_suggestion: () -> void
       def render_ghost: (String ghost, ?String suggestion) -> void
       def ghost_display_lines: (String ghost, ?String suggestion) -> Array[String]
       def colorize_ghost_lines: (String ghost, String suggestion) -> Array[String]
+      def dim_line: (String line) -> String
       def extract_ansi_colored_suffix: (String colored_text, Integer visible_byte_offset) -> String
       def write_extra_ghost_lines: (Array[String] lines) -> void
-      def restore_cursor_after: (Array[String] lines) -> void
       def find_suggestion: (String buffer) -> (String | nil)
       def accept_suggestion: (String suggestion) -> void
+      def find_prev_match: (String buffer, Integer? from_pointer) -> Integer?
+      def find_next_match: (String buffer, Integer? from_pointer) -> Integer?
     end
   end
 end

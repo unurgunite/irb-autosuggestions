@@ -14,8 +14,22 @@ module Irb
       ENV_KEY = 'IRB_AUTOSUGGESTIONS'
       CONFIG_NAV_KEY = :USE_PREFIX_HISTORY_NAVIGATION
       ENV_NAV_KEY = 'IRB_PREFIX_HISTORY_NAVIGATION'
+      ACCEPT_KEYS_CONFIG = :AUTOSUGGESTION_ACCEPT_KEYS
+      DEFAULT_ACCEPT_KEYS = %i[ed_next_char ed_end_of_line tab].freeze
+      GHOST_COLOR_CONFIG = :AUTOSUGGESTION_GHOST_COLOR
+      GHOST_STYLE_CONFIG = :AUTOSUGGESTION_GHOST_STYLE
+      DEFAULT_GHOST_COLOR = "\e[90m"
+      FG_MAP = {
+        black: 30, red: 31, green: 32, yellow: 33, blue: 34, magenta: 35, cyan: 36, white: 37,
+        default: 39,
+        bright_black: 90, bright_red: 91, bright_green: 92, bright_yellow: 93,
+        bright_blue: 94, bright_magenta: 95, bright_cyan: 96, bright_white: 97
+      }.freeze
+      ATTR_MAP = {
+        bold: 1, dim: 2, italic: 3, underline: 4, blink: 5, reverse: 7
+      }.freeze
 
-      # Intercepts key input to accept autosuggestions on right arrow
+      # Intercepts key input to accept autosuggestions on configured keys
       # and clears the prefix navigation anchor on non-history keys.
       #
       # @param [Object] key A Reline key event.
@@ -23,7 +37,7 @@ module Irb
       def input_key(key)
         clear_prefix_anchor if navigation_enabled? && !history_navigation_key?(key)
 
-        if enabled? && right_arrow?(key)
+        if enabled? && accept_key?(key)
           buffer = whole_buffer
           suggestion = find_suggestion(buffer)
 
@@ -41,13 +55,17 @@ module Irb
       # Works on both Reline 0.3.x (rerender is the main rendering entry) and
       # Reline 0.4+ (rerender calls render internally).
       #
+      # Ghost is cleared BEFORE super to avoid cursor-position-dependent
+      # escapes targeting wrong lines after accept_suggestion changes buffer.
+      #
       # @return [Object] The result of +super+.
       def rerender
+        clear_previous_ghost if enabled?
+
         result = super
-        if enabled?
-          clear_previous_ghost
-          render_ghost_suggestion
-        end
+
+        render_ghost_suggestion if enabled?
+
         result
       end
 
@@ -212,14 +230,34 @@ module Irb
         end
       end
 
-      # Checks if a key event is a right arrow press.
+      # Checks if a key event matches any configured accept key.
+      # Defaults to right arrow (:ed_next_char).
+      # Tab is matched specially — method_symbol == :ed_insert + char == "\t".
       #
       # @private
       # @param [Object] key A Reline key event.
       # @return [Boolean]
-      def right_arrow?(key)
-        key.respond_to?(:method_symbol) &&
-          key.method_symbol == :ed_next_char
+      def accept_key?(key)
+        accept_keys = IRB.conf.fetch(ACCEPT_KEYS_CONFIG, DEFAULT_ACCEPT_KEYS)
+        accept_keys.any? { |k| key_match?(key, k) }
+      end
+
+      # Checks if a key matches a given config symbol.
+      #
+      # @private
+      # @param [Object] key A Reline key event.
+      # @param [Symbol] config_symbol One of :ed_next_char, :ed_end_of_line, :tab, etc.
+      # @return [Boolean]
+      def key_match?(key, config_symbol)
+        return false unless key.respond_to?(:method_symbol)
+
+        if config_symbol == :tab
+          key.method_symbol == :ed_insert &&
+            key.respond_to?(:char) &&
+            key.char == "\t"
+        else
+          key.method_symbol == config_symbol
+        end
       end
 
       # Finds the index of the previous (older) history entry starting with +buffer+.
@@ -354,7 +392,6 @@ module Irb
       #
       # When colorization is enabled, the full suggestion is colorized via
       # IRB::Color and the ghost portion is extracted from the colored output.
-      # Otherwise, each line is wrapped in GRAY/RESET.
       #
       # @private
       # @param [String] ghost The ghost text (suffix of the suggestion).
@@ -365,10 +402,35 @@ module Irb
         if suggestion && use_colorize?
           colorize_ghost_lines(ghost, suggestion)
         else
-          ghost.split("\n").map { |line| "#{GRAY}#{line}#{RESET}" }
+          ghost.split("\n").map { |line| "#{ghost_color}#{line}#{RESET}" }
         end
       rescue StandardError
-        ghost.split("\n").map { |line| "#{GRAY}#{line}#{RESET}" }
+        ghost.split("\n").map { |line| "#{ghost_color}#{line}#{RESET}" }
+      end
+
+      # Returns the effective ANSI color code for ghost text.
+      # Checks GHOST_STYLE_CONFIG first, then GHOST_COLOR_CONFIG, then default.
+      #
+      # @private
+      # @return [String]
+      def ghost_color
+        style = IRB.conf[GHOST_STYLE_CONFIG]
+        return resolve_ghost_style(style) if style.is_a?(Hash)
+
+        IRB.conf.fetch(GHOST_COLOR_CONFIG, DEFAULT_GHOST_COLOR)
+      end
+
+      # Converts a style hash like +{ fg: :bright_black, italic: true }+
+      # to an ANSI escape sequence.
+      #
+      # @private
+      # @param [Hash] hash Style hash with +:fg+ color and optional attribute keys.
+      # @return [String]
+      def resolve_ghost_style(hash)
+        codes = []
+        codes << FG_MAP[hash[:fg]] if hash[:fg]
+        ATTR_MAP.each { |attr, code| codes << code if hash[attr] }
+        "\e[#{codes.join(';')}m"
       end
 
       # Checks whether syntax coloring is available and enabled.
