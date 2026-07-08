@@ -18,7 +18,9 @@ No need to explain. Fish-like autosuggestions for IRB — ghost text from histor
     * [Usage](#usage)
         * [Prefix-filtered history navigation](#prefix-filtered-history-navigation)
     * [Configuration](#configuration)
+        * [Ghost color](#ghost-color)
         * [Colors](#colors)
+        * [Accept keys](#accept-keys)
         * [How it works](#how-it-works)
     * [Development](#development)
     * [License](#license)
@@ -48,7 +50,8 @@ irb(main):002*   el.succ      <- "cc" in gray
 irb(main):003> end            <- "d" in gray
 ```
 
-Press **right arrow** (`->`) to accept the full multiline suggestion.
+Press **right arrow** (`->`), **Tab**, **Ctrl+F**, or **Ctrl+E** to accept the full multiline suggestion. Tab falls
+back to normal completion when no suggestion is visible. Accept keys are configurable (see below).
 
 ### Prefix-filtered history navigation
 
@@ -96,6 +99,29 @@ Or via environment variable:
 export IRB_AUTOSUGGESTIONS=0
 ```
 
+### Ghost color
+
+The plain gray fallback color can be customized. Syntax-colored ghost text (when `IRB::Color` is available) always
+takes precedence over these settings.
+
+Set a raw ANSI escape code:
+
+```ruby
+IRB.conf[:AUTOSUGGESTION_GHOST_COLOR] = "\e[32m" # green
+```
+
+Or use the declarative style hash:
+
+```ruby
+IRB.conf[:AUTOSUGGESTION_GHOST_STYLE] = { fg: :bright_black, italic: true }
+```
+
+Supported colors: `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, `default`,
+`bright_black`, `bright_red`, `bright_green`, `bright_yellow`, `bright_blue`, `bright_magenta`,
+`bright_cyan`, `bright_white`.
+
+Supported attributes: `bold`, `dim`, `italic`, `underline`, `blink`, `reverse`.
+
 ### Colors
 
 Syntax-colored ghost text is **enabled by default** when `IRB::Color` is available and `IRB.conf[:USE_COLORIZE]` is
@@ -118,6 +144,19 @@ irb --nocolorize
 > schemes. If you notice visual artifacts (e.g., wrong colors, underlines, or unusual brightness), try disabling the
 > feature or switch to the gray fallback or create new issue.
 
+### Accept keys
+
+Configure which keys accept the ghost suggestion:
+
+```ruby
+IRB.conf[:AUTOSUGGESTION_ACCEPT_KEYS] = %i[ed_next_char tab ed_end_of_line]
+```
+
+Defaults: `[:ed_next_char, :ed_end_of_line, :tab]` (right arrow/Ctrl+F, Ctrl+E, Tab).
+
+Available symbols: `:ed_next_char` (right arrow/Ctrl+F), `:ed_end_of_line` (Ctrl+E), `:tab`, or
+any Reline method symbol. When no suggestion is visible, the key falls through to its normal behavior.
+
 ### How it works
 
 - Each keystroke queries `Reline::HISTORY` for the most recent entry whose prefix matches the current buffer.
@@ -127,7 +166,7 @@ irb --nocolorize
 - Extra ghost lines (for multiline history entries) are drawn below the prompt.
 - Ghost artifacts are cleared each frame using cursor save/restore (`\e[s`/`\e[u`) and per-line clearing (`\e[2K`),
   avoiding `\e[J` which interfered with Reline's cursor tracking.
-- Right arrow triggers `ed_next_char`, which replaces the buffer with the ghost text.
+- Configurable accept keys (right arrow, Tab, Ctrl+F, Ctrl+E by default) replace the buffer with the ghost text.
 - Up/down arrows use prefix-filtered navigation when the buffer is non-empty, falling back to unfiltered browsing
   when nothing was typed.
 
