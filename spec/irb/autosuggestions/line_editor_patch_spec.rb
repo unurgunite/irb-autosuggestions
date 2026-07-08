@@ -699,6 +699,74 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
     end
   end
 
+  describe '#ghost_color' do
+    after do
+      IRB.conf.delete(described_class::GHOST_COLOR_CONFIG)
+      IRB.conf.delete(described_class::GHOST_STYLE_CONFIG)
+    end
+
+    it 'returns default gray by default' do
+      expect(editor.send(:ghost_color)).to eq("\e[90m")
+    end
+
+    it 'returns configured ANSI color' do
+      IRB.conf[described_class::GHOST_COLOR_CONFIG] = "\e[32m"
+      expect(editor.send(:ghost_color)).to eq("\e[32m")
+    end
+
+    it 'GHOST_STYLE takes precedence over GHOST_COLOR' do
+      IRB.conf[described_class::GHOST_COLOR_CONFIG] = "\e[32m"
+      IRB.conf[described_class::GHOST_STYLE_CONFIG] = { fg: :red }
+      expect(editor.send(:ghost_color)).to eq("\e[31m")
+    end
+  end
+
+  describe '#ghost_display_lines with custom color' do
+    after do
+      IRB.conf.delete(described_class::GHOST_COLOR_CONFIG)
+    end
+
+    it 'uses configured color instead of default gray' do
+      IRB.conf[described_class::GHOST_COLOR_CONFIG] = "\e[32m"
+      lines = editor.send(:ghost_display_lines, 'foo', nil)
+      expect(lines).to eq(["\e[32mfoo\e[0m"])
+    end
+
+    it 'uses custom color in fallback on error' do
+      IRB.conf[described_class::GHOST_COLOR_CONFIG] = "\e[31m"
+      allow(IRB::Color).to receive(:colorize_code).and_raise(StandardError)
+      lines = editor.send(:ghost_display_lines, 'foo', 'anything')
+      expect(lines).to eq(["\e[31mfoo\e[0m"])
+    end
+  end
+
+  describe '#resolve_ghost_style' do
+    it 'resolves fg color to ANSI code' do
+      expect(editor.send(:resolve_ghost_style, { fg: :red })).to eq("\e[31m")
+    end
+
+    it 'resolves bright color' do
+      expect(editor.send(:resolve_ghost_style, { fg: :bright_white })).to eq("\e[97m")
+    end
+
+    it 'resolves italic attribute' do
+      expect(editor.send(:resolve_ghost_style, { italic: true })).to eq("\e[3m")
+    end
+
+    it 'resolves bold attribute' do
+      expect(editor.send(:resolve_ghost_style, { bold: true })).to eq("\e[1m")
+    end
+
+    it 'combines fg and attributes' do
+      expect(editor.send(:resolve_ghost_style, { fg: :bright_black, italic: true }))
+        .to eq("\e[90;3m")
+    end
+
+    it 'handles empty hash' do
+      expect(editor.send(:resolve_ghost_style, {})).to eq("\e[m")
+    end
+  end
+
   describe '#use_colorize?' do
     around do |example|
       original = IRB.conf[:USE_COLORIZE]

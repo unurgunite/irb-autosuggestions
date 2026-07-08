@@ -16,6 +16,18 @@ module Irb
       ENV_NAV_KEY = 'IRB_PREFIX_HISTORY_NAVIGATION'
       ACCEPT_KEYS_CONFIG = :AUTOSUGGESTION_ACCEPT_KEYS
       DEFAULT_ACCEPT_KEYS = %i[ed_next_char ed_end_of_line tab].freeze
+      GHOST_COLOR_CONFIG = :AUTOSUGGESTION_GHOST_COLOR
+      GHOST_STYLE_CONFIG = :AUTOSUGGESTION_GHOST_STYLE
+      DEFAULT_GHOST_COLOR = "\e[90m"
+      FG_MAP = {
+        black: 30, red: 31, green: 32, yellow: 33, blue: 34, magenta: 35, cyan: 36, white: 37,
+        default: 39,
+        bright_black: 90, bright_red: 91, bright_green: 92, bright_yellow: 93,
+        bright_blue: 94, bright_magenta: 95, bright_cyan: 96, bright_white: 97
+      }.freeze
+      ATTR_MAP = {
+        bold: 1, dim: 2, italic: 3, underline: 4, blink: 5, reverse: 7
+      }.freeze
 
       # Intercepts key input to accept autosuggestions on configured keys
       # and clears the prefix navigation anchor on non-history keys.
@@ -376,7 +388,6 @@ module Irb
       #
       # When colorization is enabled, the full suggestion is colorized via
       # IRB::Color and the ghost portion is extracted from the colored output.
-      # Otherwise, each line is wrapped in GRAY/RESET.
       #
       # @private
       # @param [String] ghost The ghost text (suffix of the suggestion).
@@ -387,10 +398,35 @@ module Irb
         if suggestion && use_colorize?
           colorize_ghost_lines(ghost, suggestion)
         else
-          ghost.split("\n").map { |line| "#{GRAY}#{line}#{RESET}" }
+          ghost.split("\n").map { |line| "#{ghost_color}#{line}#{RESET}" }
         end
       rescue StandardError
-        ghost.split("\n").map { |line| "#{GRAY}#{line}#{RESET}" }
+        ghost.split("\n").map { |line| "#{ghost_color}#{line}#{RESET}" }
+      end
+
+      # Returns the effective ANSI color code for ghost text.
+      # Checks GHOST_STYLE_CONFIG first, then GHOST_COLOR_CONFIG, then default.
+      #
+      # @private
+      # @return [String]
+      def ghost_color
+        style = IRB.conf[GHOST_STYLE_CONFIG]
+        return resolve_ghost_style(style) if style.is_a?(Hash)
+
+        IRB.conf.fetch(GHOST_COLOR_CONFIG, DEFAULT_GHOST_COLOR)
+      end
+
+      # Converts a style hash like +{ fg: :bright_black, italic: true }+
+      # to an ANSI escape sequence.
+      #
+      # @private
+      # @param [Hash] hash Style hash with +:fg+ color and optional attribute keys.
+      # @return [String]
+      def resolve_ghost_style(hash)
+        codes = []
+        codes << FG_MAP[hash[:fg]] if hash[:fg]
+        ATTR_MAP.each { |attr, code| codes << code if hash[attr] }
+        "\e[#{codes.join(';')}m"
       end
 
       # Checks whether syntax coloring is available and enabled.
