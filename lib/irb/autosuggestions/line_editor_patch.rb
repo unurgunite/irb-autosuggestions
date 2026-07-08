@@ -14,8 +14,10 @@ module Irb
       ENV_KEY = 'IRB_AUTOSUGGESTIONS'
       CONFIG_NAV_KEY = :USE_PREFIX_HISTORY_NAVIGATION
       ENV_NAV_KEY = 'IRB_PREFIX_HISTORY_NAVIGATION'
+      ACCEPT_KEYS_CONFIG = :AUTOSUGGESTION_ACCEPT_KEYS
+      DEFAULT_ACCEPT_KEYS = %i[ed_next_char ed_end_of_line tab].freeze
 
-      # Intercepts key input to accept autosuggestions on right arrow
+      # Intercepts key input to accept autosuggestions on configured keys
       # and clears the prefix navigation anchor on non-history keys.
       #
       # @param [Object] key A Reline key event.
@@ -23,7 +25,7 @@ module Irb
       def input_key(key)
         clear_prefix_anchor if navigation_enabled? && !history_navigation_key?(key)
 
-        if enabled? && right_arrow?(key)
+        if enabled? && accept_key?(key)
           buffer = whole_buffer
           suggestion = find_suggestion(buffer)
 
@@ -212,14 +214,34 @@ module Irb
         end
       end
 
-      # Checks if a key event is a right arrow press.
+      # Checks if a key event matches any configured accept key.
+      # Defaults to right arrow (:ed_next_char).
+      # Tab is matched specially — method_symbol == :ed_insert + char == "\t".
       #
       # @private
       # @param [Object] key A Reline key event.
       # @return [Boolean]
-      def right_arrow?(key)
-        key.respond_to?(:method_symbol) &&
-          key.method_symbol == :ed_next_char
+      def accept_key?(key)
+        accept_keys = IRB.conf.fetch(ACCEPT_KEYS_CONFIG, DEFAULT_ACCEPT_KEYS)
+        accept_keys.any? { |k| key_match?(key, k) }
+      end
+
+      # Checks if a key matches a given config symbol.
+      #
+      # @private
+      # @param [Object] key A Reline key event.
+      # @param [Symbol] config_symbol One of :ed_next_char, :ed_end_of_line, :tab, etc.
+      # @return [Boolean]
+      def key_match?(key, config_symbol)
+        return false unless key.respond_to?(:method_symbol)
+
+        if config_symbol == :tab
+          key.method_symbol == :ed_insert &&
+            key.respond_to?(:char) &&
+            key.char == "\t"
+        else
+          key.method_symbol == config_symbol
+        end
       end
 
       # Finds the index of the previous (older) history entry starting with +buffer+.
