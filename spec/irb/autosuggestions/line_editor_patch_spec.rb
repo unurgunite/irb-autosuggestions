@@ -423,6 +423,37 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
       end
     end
 
+    context 'when buffer matches suggestion exactly' do
+      around do |example|
+        original = Reline::HISTORY.to_a
+        Reline::HISTORY.clear
+        Reline::HISTORY << "def foo\n  :foo\nend"
+        example.run
+      ensure
+        Reline::HISTORY.clear
+        original.each { |h| Reline::HISTORY << h }
+      end
+
+      it 'does not accept when buffer equals suggestion' do
+        editor.instance_variable_set(:@buffer_of_lines, ["def foo\n  :foo\nend"])
+        editor.send(:input_key, right_key)
+        expect(editor.instance_variable_get(:@buffer_of_lines))
+          .to eq(["def foo\n  :foo\nend"])
+      end
+
+      it 'falls through to super when buffer equals suggestion' do
+        editor.instance_variable_set(:@buffer_of_lines, ["def foo\n  :foo\nend"])
+        expect(editor.send(:input_key, right_key)).to eq(:original)
+      end
+    end
+
+    it 'Enter key never triggers acceptance' do
+      Reline::HISTORY << 'some_command'
+      editor.instance_variable_set(:@buffer_of_lines, ['some_c'])
+      enter_key = double(method_symbol: :ed_newline)
+      expect(editor.send(:input_key, enter_key)).to eq(:original)
+    end
+
     context 'with custom accept keys config' do
       around do |example|
         original = IRB.conf[described_class::ACCEPT_KEYS_CONFIG]
