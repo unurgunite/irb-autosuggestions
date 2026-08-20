@@ -478,6 +478,8 @@ module Irb
       # @private
       # @param [String] ghost The ghost text (suffix of the suggestion).
       # @param [String, nil] suggestion The full matching history entry.
+      # @param [Integer, nil] ghost_byte_start Byte offset of the ghost within the
+      #   full suggestion (pre-truncation), used to extract the colored suffix.
       # @return [void]
       def render_ghost(ghost, suggestion = nil, ghost_byte_start = nil) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
         output = Reline.core.instance_variable_get(:@output)
@@ -503,6 +505,8 @@ module Irb
       # @private
       # @param [String] ghost The ghost text (suffix of the suggestion).
       # @param [String, nil] suggestion The full matching history entry.
+      # @param [Integer, nil] ghost_byte_start Byte offset of the ghost within the
+      #   full suggestion (pre-truncation), used to extract the colored suffix.
       # @raise [StandardError]
       # @return [Array<String>]
       def ghost_display_lines(ghost, suggestion, ghost_byte_start = nil)
