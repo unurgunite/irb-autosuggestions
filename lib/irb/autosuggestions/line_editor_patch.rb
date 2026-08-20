@@ -35,19 +35,27 @@ module Irb
       # @param [Object] key A Reline key event.
       # @return [Object]
       def input_key(key)
+        # Some keys (Enter, submission) bypass rerender, so ghost is cleared
+        # on every key to avoid stale ghost lines leftover on screen.
+        clear_previous_ghost if enabled?
+
         clear_prefix_anchor if navigation_enabled? && !history_navigation_key?(key)
 
-        if enabled? && accept_key?(key)
-          buffer = whole_buffer
-          suggestion = find_suggestion(buffer)
-
-          if suggestion && suggestion != buffer
-            accept_suggestion(suggestion)
-            return
-          end
-        end
+        return if enabled? && accept_key?(key) && accept_matching_suggestion?
 
         super
+      end
+
+      # Accepts the current suggestion when it extends the buffer.
+      #
+      # @return [Boolean] true when a suggestion was accepted
+      def accept_matching_suggestion?
+        buffer = whole_buffer
+        suggestion = find_suggestion(buffer)
+        return false unless suggestion && suggestion != buffer
+
+        accept_suggestion(suggestion)
+        true
       end
 
       # Injects ghost text into terminal output after Reline finishes rendering.
@@ -321,6 +329,13 @@ module Irb
 
       # Renders ghost text for the current buffer, if a suggestion exists.
       #
+      # The ghost is reduced to fit the terminal width so it never wraps
+      # onto the following row. A ghost that wraps corrupts Reline's
+      # single-row cursor model (duplicated text, stale ANSI state),
+      # because Reline does not track visual wrapping of long lines.
+      # Suggestions remain accept-able via the configured keys even when
+      # the ghost is truncated.
+      #
       # @private
       # @return [void]
       def render_ghost_suggestion
@@ -334,7 +349,99 @@ module Irb
         ghost = suggestion[buffer.size..]
         return if ghost.nil? || ghost.empty?
 
-        render_ghost(ghost, suggestion)
+        render_ghost(truncate_ghost_to_terminal(ghost), suggestion, suggestion.bytesize - ghost.bytesize)
+      end
+
+      # Truncates ghost text so no visible line exceeds the terminal width:
+      # the inline part is capped at the space left on the current line,
+      # each following line at the space left after the prompt.
+      #
+      # @private
+      # @param [String] ghost The ghost text (suffix of the suggestion).
+      # @return [String]
+      def truncate_ghost_to_terminal(ghost)
+        inline_limit = terminal_width - current_line_width - 1
+        return String.new if inline_limit <= 0
+
+        lines = ghost.split("\n", -1)
+        truncate_to_width(lines.first, inline_limit) + truncate_rest_lines(lines)
+      end
+
+      # Truncates every ghost line after the first at the width left
+      # after the prompt, keeping line breaks intact.
+      #
+      # @private
+      # @param [Array<String>] lines
+      # @return [String]
+      def truncate_rest_lines(lines)
+        rest_limit = terminal_width - prompt_width - 1
+        rest = lines.drop(1).map { |line| truncate_to_width(line, rest_limit) }
+        rest.empty? ? String.new : "\n#{rest.join("\n")}"
+      end
+
+      # Display width of the first ghost line.
+      #
+      # @private
+      # Truncates a string to the given display width, appending an
+      # ellipsis when cut. Counts Unicode display width, so multi-column
+      # characters are handled correctly.
+      #
+      # @private
+      # @param [String] str
+      # @param [Integer] max_width
+      # @return [String]
+      def truncate_to_width(str, max_width)
+        return String.new if max_width.negative?
+        return str if max_width.zero? || Reline::Unicode.calculate_width(str) <= max_width
+
+        "#{chars_up_to(str, max_width - 1)}…"
+      end
+
+      # Characters of +str+ whose combined display width does not
+      # exceed +max_width+.
+      #
+      # @private
+      # @param [String] str
+      # @param [Integer] max_width
+      # @return [String]
+      def chars_up_to(str, max_width)
+        width = 0
+        str.each_char.with_object(+'') do |char, out|
+          char_width = Reline::Unicode.calculate_width(char)
+          break out if width + char_width > max_width
+
+          width += char_width
+          out << char
+        end
+      end
+
+      # Width of the prompt (in display columns).
+      #
+      # @private
+      # @return [Integer]
+      def prompt_width
+        @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
+      end
+
+      # Display width of the prompt plus the current buffer line.
+      #
+      # @private
+      # @return [Integer]
+      def current_line_width
+        line = @buffer_of_lines[@line_index] || ''
+        prompt_width + Reline::Unicode.calculate_width(line)
+      end
+
+      # Terminal width in columns, falling back to 80 when unknown.
+      #
+      # @private
+      # @return [Integer]
+      def terminal_width
+        if defined?(Reline::IOGate) && Reline::IOGate.respond_to?(:get_screen_size)
+          Reline::IOGate.get_screen_size[1]
+        else
+          80
+        end
       end
 
       # Finds the most recent history entry that starts with the given buffer.
@@ -371,10 +478,12 @@ module Irb
       # @private
       # @param [String] ghost The ghost text (suffix of the suggestion).
       # @param [String, nil] suggestion The full matching history entry.
+      # @param [Integer, nil] ghost_byte_start Byte offset of the ghost within the
+      #   full suggestion (pre-truncation), used to extract the colored suffix.
       # @return [void]
-      def render_ghost(ghost, suggestion = nil) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
+      def render_ghost(ghost, suggestion = nil, ghost_byte_start = nil) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
         output = Reline.core.instance_variable_get(:@output)
-        display_lines = ghost_display_lines(ghost, suggestion)
+        display_lines = ghost_display_lines(ghost, suggestion, ghost_byte_start)
         @ghost_line_count = display_lines.size - 1
         @has_inline_ghost = true
 
@@ -396,11 +505,13 @@ module Irb
       # @private
       # @param [String] ghost The ghost text (suffix of the suggestion).
       # @param [String, nil] suggestion The full matching history entry.
+      # @param [Integer, nil] ghost_byte_start Byte offset of the ghost within the
+      #   full suggestion (pre-truncation), used to extract the colored suffix.
       # @raise [StandardError]
       # @return [Array<String>]
-      def ghost_display_lines(ghost, suggestion)
+      def ghost_display_lines(ghost, suggestion, ghost_byte_start = nil)
         if suggestion && use_colorize?
-          colorize_ghost_lines(ghost, suggestion)
+          colorize_ghost_lines(ghost, suggestion, ghost_byte_start)
         else
           ghost.split("\n").map { |line| "#{ghost_color}#{line}#{RESET}" }
         end
@@ -445,15 +556,78 @@ module Irb
 
       # Colorizes the full suggestion and extracts the ghost portion.
       #
+      # +ghost_byte_start+ is the visible-byte offset of the ghost within
+      # the suggestion. It must come from the full (untruncated) ghost:
+      # using a truncated ghost shifts the offset into the middle of the
+      # suggestion and the colored suffix no longer matches the buffer.
+      # Colored lines are then truncated to fit the terminal width, same
+      # as the plain-text ghost.
+      #
       # @private
       # @param [String] ghost The ghost text (suffix of the suggestion).
       # @param [String] suggestion The full matching history entry.
+      # @param [Integer, nil] ghost_byte_start Visible-byte offset of the ghost.
       # @return [Array<String>] Colorized ghost lines with ANSI codes.
-      def colorize_ghost_lines(ghost, suggestion)
+      def colorize_ghost_lines(ghost, suggestion, ghost_byte_start = nil)
         colored = IRB::Color.colorize_code(suggestion)
-        ghost_byte_start = suggestion.bytesize - ghost.bytesize
-        colored_ghost = extract_ansi_colored_suffix(colored, ghost_byte_start)
-        colored_ghost.split("\n").map { |line| dim_line(line) }
+        start = ghost_byte_start || (suggestion.bytesize - ghost.bytesize)
+        colored_ghost = extract_ansi_colored_suffix(colored, start)
+        truncate_colored_ghost(colored_ghost).map { |line| dim_line(line) }
+      end
+
+      # Truncates colorized ghost lines so no line exceeds the terminal
+      # width, mirroring +truncate_ghost_to_terminal+ for plain text.
+      #
+      # @private
+      # @param [String] colored_ghost ANSI-colored ghost text.
+      # @return [Array<String>]
+      def truncate_colored_ghost(colored_ghost)
+        lines = colored_ghost.split("\n")
+        rest_limit = terminal_width - prompt_width - 1
+        first = truncate_colored_to_width(lines.first, terminal_width - current_line_width - 1)
+        [first] + lines.drop(1).map { |line| truncate_colored_to_width(line, rest_limit) }
+      end
+
+      # Truncates an ANSI-colored line to the given display width, counting
+      # escape codes as zero-width, and appending an ellipsis when cut.
+      #
+      # @private
+      # @param [String] line ANSI-colored line.
+      # @param [Integer] max_width
+      # @return [String]
+      def truncate_colored_to_width(line, max_width)
+        return String.new if max_width <= 0
+        return line if Reline::Unicode.calculate_width(line, true) <= max_width
+
+        "#{colored_chars_up_to(line, max_width - 1)}…"
+      end
+
+      # Characters of +line+ (with ANSI codes preserved) whose combined
+      # display width does not exceed +max_width+.
+      #
+      # @private
+      # @param [String] line ANSI-colored line.
+      # @param [Integer] max_width
+      # @return [String]
+      def colored_chars_up_to(line, max_width) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
+        width = 0
+        out = +''
+        rest = line.dup
+        until rest.empty?
+          if rest.start_with?("\e")
+            code = rest[/\e\[[0-9;]*m/]
+            out << code
+            rest = code ? rest[code.length..] : ''
+            next
+          end
+          char = rest.each_char.first
+          break if width + Reline::Unicode.calculate_width(char) > max_width
+
+          width += Reline::Unicode.calculate_width(char)
+          out << char
+          rest = rest[char.length..]
+        end
+        out
       end
 
       # Prepends each ANSI foreground color code with +2;+ (dim)
@@ -512,7 +686,6 @@ module Irb
       def write_extra_ghost_lines(lines)
         return if lines.empty?
 
-        prompt_width = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
         output = Reline.core.instance_variable_get(:@output)
 
         lines.each do |line|
@@ -528,7 +701,6 @@ module Irb
       # @private
       # @return [Integer]
       def cursor_column_at_byte_pointer
-        prompt_width = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
         current_line = @buffer_of_lines[@line_index] || ''
         prompt_width + Reline::Unicode.calculate_width(current_line[0...@byte_pointer])
       end
@@ -538,10 +710,8 @@ module Irb
       # @private
       # @return [String]
       def move_to_buffer_end
-        prompt_width = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
         current_line = @buffer_of_lines[@line_index] || ''
-        buf_end = prompt_width + Reline::Unicode.calculate_width(current_line)
-        "\e[0G\e[#{buf_end}C"
+        "\e[0G\e[#{prompt_width + Reline::Unicode.calculate_width(current_line)}C"
       end
     end
   end

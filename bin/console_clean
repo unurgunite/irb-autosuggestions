@@ -1,0 +1,19 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'bundler/setup'
+require 'irb/autosuggestions'
+require 'irb'
+
+RELINE_HISTORY = File.expand_path('~/.reline_history_clean')
+
+entry = 'le = Reline.core.instance_variable_get(:@line_editor)' \
+        '; [le.send(:terminal_width), le.send(:prompt_width), ' \
+        'le.instance_variable_get(:@line_index), ' \
+        'le.instance_variable_get(:@buffer_of_lines), le.send(:current_line_width)]'
+history = [entry, 'puts 1', 'l2 = $r.instance_variable_get(:@buffer_of_lines)[0]; [l2.bytesize]']
+File.write(RELINE_HISTORY, (history + ['']).join("\n"))
+
+IRB.conf[:USE_COLORIZE] = ENV['IRB_COLORIZE'] == '1'
+IRB.conf[:HISTORY_FILE] = RELINE_HISTORY
+IRB.start(__FILE__)
