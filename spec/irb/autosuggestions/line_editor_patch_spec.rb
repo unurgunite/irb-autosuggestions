@@ -747,6 +747,7 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
       end
 
       before do
+        stub_terminal_width(editor, 80)
         allow(IRB::Color).to receive(:colorable?).and_return(true)
         allow(IRB::Color).to receive(:colorize_code) do |code|
           # Simulate per-token ANSI coloring (like real IRB::Color)
@@ -768,6 +769,26 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
         allow(IRB::Color).to receive(:colorize_code).and_raise(StandardError)
         lines = editor.send(:ghost_display_lines, 'foo', 'def foo')
         expect(lines).to eq(["\e[90mfoo\e[0m"])
+      end
+
+      it 'truncates colorized ghost to the terminal width' do
+        stub_terminal_width(editor, 10)
+        long = 'x' * 60
+        lines = editor.send(:ghost_display_lines, long, "def #{long}")
+        expect(lines.first).to include('…')
+      end
+
+      it 'never lets a colorized ghost line exceed the terminal width' do
+        stub_terminal_width(editor, 10)
+        lines = editor.send(:ghost_display_lines, 'x' * 60, "def #{'x' * 60}")
+        expect(Reline::Unicode.calculate_width(lines.first, true)).to be <= 10
+      end
+
+      it 'uses the full ghost byte start, not the truncated one' do
+        stub_terminal_width(editor, 100)
+        ghost = 'cd' * 30
+        lines = editor.send(:ghost_display_lines, ghost, "ab#{ghost}", 2)
+        expect(lines.first).to start_with("\e[2m\e[2;32mcd")
       end
     end
   end
