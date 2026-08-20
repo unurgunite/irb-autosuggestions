@@ -870,7 +870,6 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
     around do |example|
       original = editor.instance_variable_get(:@prompt)
       editor.instance_variable_set(:@prompt, 'irb(main):001> ')
-      stub_terminal_width(editor, 40)
       editor.set_current_line('def ')
       example.run
     ensure
@@ -878,21 +877,29 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
     end
 
     it 'keeps the ghost when it fits on one row' do
+      stub_terminal_width(editor, 40)
       expect(editor.send(:truncate_ghost_to_terminal, 'foo')).to eq('foo')
     end
 
     it 'truncates the inline part to the space left on the current line' do
-      expect(editor.send(:truncate_ghost_to_terminal, 'x' * 100)).to eq("#{'x' * 34}…")
+      stub_terminal_width(editor, 40)
+      expect(editor.send(:truncate_ghost_to_terminal, 'x' * 100)).to eq("#{'x' * 19}…")
+    end
+
+    it 'keeps the leading empty line for multiline ghosts' do
+      stub_terminal_width(editor, 40)
+      lines = editor.send(:truncate_ghost_to_terminal, "\n#{'y' * 100}").split("\n", -1)
+      expect(lines.first).to eq(String.new)
     end
 
     it 'caps each following line at the width left after the prompt' do
+      stub_terminal_width(editor, 40)
       result = editor.send(:truncate_ghost_to_terminal, "\n#{'y' * 100}")
-      lines = result.split("\n", -1)
-      expect(lines.first).to eq(String.new)
-      expect(lines.last).to eq("#{'y' * 19}…")
+      expect(result.split("\n", -1).last).to eq("#{'y' * 23}…")
     end
 
     it 'returns an empty string when no space is left on the row' do
+      stub_terminal_width(editor, 40)
       editor.set_current_line('x' * 30)
       expect(editor.send(:truncate_ghost_to_terminal, 'y' * 10)).to eq(String.new)
     end
@@ -904,11 +911,11 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
     end
 
     it 'appends an ellipsis when truncated' do
-      expect(editor.send(:truncate_to_width, 'abcdef', 4)).to eq('abcd…')
+      expect(editor.send(:truncate_to_width, 'abcdef', 4)).to eq('abc…')
     end
 
     it 'handles multi-column characters' do
-      expect(editor.send(:truncate_to_width, 'aжиb', 4)).to eq('aжи…')
+      expect(editor.send(:truncate_to_width, 'a界b', 3)).to eq('a…')
     end
 
     it 'returns an empty string for a negative width' do

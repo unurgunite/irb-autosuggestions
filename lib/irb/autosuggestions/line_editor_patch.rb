@@ -41,17 +41,21 @@ module Irb
 
         clear_prefix_anchor if navigation_enabled? && !history_navigation_key?(key)
 
-        if enabled? && accept_key?(key)
-          buffer = whole_buffer
-          suggestion = find_suggestion(buffer)
-
-          if suggestion && suggestion != buffer
-            accept_suggestion(suggestion)
-            return
-          end
-        end
+        return if enabled? && accept_key?(key) && accept_matching_suggestion?
 
         super
+      end
+
+      # Accepts the current suggestion when it extends the buffer.
+      #
+      # @return [Boolean] true when a suggestion was accepted
+      def accept_matching_suggestion?
+        buffer = whole_buffer
+        suggestion = find_suggestion(buffer)
+        return false unless suggestion && suggestion != buffer
+
+        accept_suggestion(suggestion)
+        true
       end
 
       # Injects ghost text into terminal output after Reline finishes rendering.
@@ -359,15 +363,28 @@ module Irb
       # @param [String] ghost The ghost text (suffix of the suggestion).
       # @return [String]
       def truncate_ghost_to_terminal(ghost)
-        inline_limit = terminal_width - current_line_width
-        rest_limit = terminal_width - prompt_width
+        inline_limit = terminal_width - current_line_width - 1
+        return String.new if inline_limit <= 0
 
         lines = ghost.split("\n", -1)
-        first = truncate_to_width(lines.first, inline_limit)
-        rest = lines.drop(1).map { |line| truncate_to_width(line, rest_limit) }
-        [first, *rest].join("\n")
+        truncate_to_width(lines.first, inline_limit) + truncate_rest_lines(lines)
       end
 
+      # Truncates every ghost line after the first at the width left
+      # after the prompt, keeping line breaks intact.
+      #
+      # @private
+      # @param [Array<String>] lines
+      # @return [String]
+      def truncate_rest_lines(lines)
+        rest_limit = terminal_width - prompt_width - 1
+        rest = lines.drop(1).map { |line| truncate_to_width(line, rest_limit) }
+        rest.empty? ? String.new : "\n#{rest.join("\n")}"
+      end
+
+      # Display width of the first ghost line.
+      #
+      # @private
       # Truncates a string to the given display width, appending an
       # ellipsis when cut. Counts Unicode display width, so multi-column
       # characters are handled correctly.
@@ -377,21 +394,28 @@ module Irb
       # @param [Integer] max_width
       # @return [String]
       def truncate_to_width(str, max_width)
-        return String.new if max_width < 0
-        return str if max_width.zero?
+        return String.new if max_width.negative?
+        return str if max_width.zero? || Reline::Unicode.calculate_width(str) <= max_width
 
+        "#{chars_up_to(str, max_width - 1)}…"
+      end
+
+      # Characters of +str+ whose combined display width does not
+      # exceed +max_width+.
+      #
+      # @private
+      # @param [String] str
+      # @param [Integer] max_width
+      # @return [String]
+      def chars_up_to(str, max_width)
         width = 0
-        out = +''
-        str.each_char do |char|
+        str.each_char.with_object(+'') do |char, out|
           char_width = Reline::Unicode.calculate_width(char)
-          if width + char_width > max_width
-            out << '…'
-            return out
-          end
+          break out if width + char_width > max_width
+
           width += char_width
           out << char
         end
-        out
       end
 
       # Width of the prompt (in display columns).

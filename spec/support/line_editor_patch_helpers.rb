@@ -35,8 +35,10 @@ module LineEditorPatchHelpers
   end
 
   # Stubs the terminal width for geometry-related specs.
-  def stub_terminal_width(editor, width = 80)
-    editor.define_singleton_method(:terminal_width) { width }
+  # Stubs IOGate because the module is prepended and its own
+  # +terminal_width+ would shadow an instance-level method stub.
+  def stub_terminal_width(_editor, width = 80)
+    allow(Reline::IOGate).to receive(:get_screen_size).and_return([24, width])
   end
 end
 # rubocop:enable Metrics/MethodLength, Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
