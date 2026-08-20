@@ -33,5 +33,10 @@ module LineEditorPatchHelpers
   ensure
     IRB.conf[Irb::Autosuggestions::LineEditorPatch::CONFIG_KEY] = original
   end
+
+  # Stubs the terminal width for geometry-related specs.
+  def stub_terminal_width(editor, width = 80)
+    editor.define_singleton_method(:terminal_width) { width }
+  end
 end
 # rubocop:enable Metrics/MethodLength, Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity

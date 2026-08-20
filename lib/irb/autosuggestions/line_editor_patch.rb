@@ -35,6 +35,10 @@ module Irb
       # @param [Object] key A Reline key event.
       # @return [Object]
       def input_key(key)
+        # Some keys (Enter, submission) bypass rerender, so ghost is cleared
+        # on every key to avoid stale ghost lines leftover on screen.
+        clear_previous_ghost if enabled?
+
         clear_prefix_anchor if navigation_enabled? && !history_navigation_key?(key)
 
         if enabled? && accept_key?(key)
@@ -321,6 +325,13 @@ module Irb
 
       # Renders ghost text for the current buffer, if a suggestion exists.
       #
+      # The ghost is reduced to fit the terminal width so it never wraps
+      # onto the following row. A ghost that wraps corrupts Reline's
+      # single-row cursor model (duplicated text, stale ANSI state),
+      # because Reline does not track visual wrapping of long lines.
+      # Suggestions remain accept-able via the configured keys even when
+      # the ghost is truncated.
+      #
       # @private
       # @return [void]
       def render_ghost_suggestion
@@ -334,7 +345,82 @@ module Irb
         ghost = suggestion[buffer.size..]
         return if ghost.nil? || ghost.empty?
 
+        ghost = truncate_ghost_to_terminal(ghost)
+        return if ghost.empty?
+
         render_ghost(ghost, suggestion)
+      end
+
+      # Truncates ghost text so no visible line exceeds the terminal width:
+      # the inline part is capped at the space left on the current line,
+      # each following line at the space left after the prompt.
+      #
+      # @private
+      # @param [String] ghost The ghost text (suffix of the suggestion).
+      # @return [String]
+      def truncate_ghost_to_terminal(ghost)
+        inline_limit = terminal_width - current_line_width
+        rest_limit = terminal_width - prompt_width
+
+        lines = ghost.split("\n", -1)
+        first = truncate_to_width(lines.first, inline_limit)
+        rest = lines.drop(1).map { |line| truncate_to_width(line, rest_limit) }
+        [first, *rest].join("\n")
+      end
+
+      # Truncates a string to the given display width, appending an
+      # ellipsis when cut. Counts Unicode display width, so multi-column
+      # characters are handled correctly.
+      #
+      # @private
+      # @param [String] str
+      # @param [Integer] max_width
+      # @return [String]
+      def truncate_to_width(str, max_width)
+        return String.new if max_width < 0
+        return str if max_width.zero?
+
+        width = 0
+        out = +''
+        str.each_char do |char|
+          char_width = Reline::Unicode.calculate_width(char)
+          if width + char_width > max_width
+            out << '…'
+            return out
+          end
+          width += char_width
+          out << char
+        end
+        out
+      end
+
+      # Width of the prompt (in display columns).
+      #
+      # @private
+      # @return [Integer]
+      def prompt_width
+        @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
+      end
+
+      # Display width of the prompt plus the current buffer line.
+      #
+      # @private
+      # @return [Integer]
+      def current_line_width
+        line = @buffer_of_lines[@line_index] || ''
+        prompt_width + Reline::Unicode.calculate_width(line)
+      end
+
+      # Terminal width in columns, falling back to 80 when unknown.
+      #
+      # @private
+      # @return [Integer]
+      def terminal_width
+        if defined?(Reline::IOGate) && Reline::IOGate.respond_to?(:get_screen_size)
+          Reline::IOGate.get_screen_size[1]
+        else
+          80
+        end
       end
 
       # Finds the most recent history entry that starts with the given buffer.
@@ -512,7 +598,6 @@ module Irb
       def write_extra_ghost_lines(lines)
         return if lines.empty?
 
-        prompt_width = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
         output = Reline.core.instance_variable_get(:@output)
 
         lines.each do |line|
@@ -528,7 +613,6 @@ module Irb
       # @private
       # @return [Integer]
       def cursor_column_at_byte_pointer
-        prompt_width = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
         current_line = @buffer_of_lines[@line_index] || ''
         prompt_width + Reline::Unicode.calculate_width(current_line[0...@byte_pointer])
       end
@@ -538,10 +622,8 @@ module Irb
       # @private
       # @return [String]
       def move_to_buffer_end
-        prompt_width = @prompt ? Reline::Unicode.calculate_width(@prompt) : 0
         current_line = @buffer_of_lines[@line_index] || ''
-        buf_end = prompt_width + Reline::Unicode.calculate_width(current_line)
-        "\e[0G\e[#{buf_end}C"
+        "\e[0G\e[#{prompt_width + Reline::Unicode.calculate_width(current_line)}C"
       end
     end
   end

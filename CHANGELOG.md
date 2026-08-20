@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Text duplication and stale ghost fragments when typing lines that wrap past the terminal edge; ghost preview is now hidden for suggestions that do not fit the current row instead of corrupting the display
+- Dim/color state leaking into subsequent input after accepting a suggestion
+
 ## [0.2.2] - 2026-07-08
 
 ### Added

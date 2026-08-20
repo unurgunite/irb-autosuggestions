@@ -866,6 +866,71 @@ RSpec.describe Irb::Autosuggestions::LineEditorPatch do
     end
   end
 
+  describe '#truncate_ghost_to_terminal' do
+    around do |example|
+      original = editor.instance_variable_get(:@prompt)
+      editor.instance_variable_set(:@prompt, 'irb(main):001> ')
+      stub_terminal_width(editor, 40)
+      editor.set_current_line('def ')
+      example.run
+    ensure
+      editor.instance_variable_set(:@prompt, original)
+    end
+
+    it 'keeps the ghost when it fits on one row' do
+      expect(editor.send(:truncate_ghost_to_terminal, 'foo')).to eq('foo')
+    end
+
+    it 'truncates the inline part to the space left on the current line' do
+      expect(editor.send(:truncate_ghost_to_terminal, 'x' * 100)).to eq("#{'x' * 34}…")
+    end
+
+    it 'caps each following line at the width left after the prompt' do
+      result = editor.send(:truncate_ghost_to_terminal, "\n#{'y' * 100}")
+      lines = result.split("\n", -1)
+      expect(lines.first).to eq(String.new)
+      expect(lines.last).to eq("#{'y' * 19}…")
+    end
+
+    it 'returns an empty string when no space is left on the row' do
+      editor.set_current_line('x' * 30)
+      expect(editor.send(:truncate_ghost_to_terminal, 'y' * 10)).to eq(String.new)
+    end
+  end
+
+  describe '#truncate_to_width' do
+    it 'returns the string unchanged when it fits' do
+      expect(editor.send(:truncate_to_width, 'abcdef', 10)).to eq('abcdef')
+    end
+
+    it 'appends an ellipsis when truncated' do
+      expect(editor.send(:truncate_to_width, 'abcdef', 4)).to eq('abcd…')
+    end
+
+    it 'handles multi-column characters' do
+      expect(editor.send(:truncate_to_width, 'aжиb', 4)).to eq('aжи…')
+    end
+
+    it 'returns an empty string for a negative width' do
+      expect(editor.send(:truncate_to_width, 'abc', -1)).to eq(String.new)
+    end
+  end
+
+  describe '#terminal_width' do
+    it 'reads the screen size from Reline::IOGate' do
+      allow(Reline::IOGate).to receive(:get_screen_size).and_return([24, 100])
+      expect(editor.send(:terminal_width)).to eq(100)
+    end
+
+    it 'falls back to 80 when IOGate is unavailable' do
+      const = Reline.const_defined?(:IOGate) && Reline.const_get(:IOGate)
+      Reline.send(:remove_const, :IOGate) if const # rubocop:disable RSpec/RemoveConst
+      expect(editor.send(:terminal_width)).to eq(80)
+    ensure
+      Reline.const_set(:IOGate, const) if const
+    end
+  end
+
   describe 'constant values' do
     it 'uses gray ANSI code for ghost text' do
       expect(described_class::GRAY).to eq("\e[90m")
