@@ -33,5 +33,12 @@ module LineEditorPatchHelpers
   ensure
     IRB.conf[Irb::Autosuggestions::LineEditorPatch::CONFIG_KEY] = original
   end
+
+  # Stubs the terminal width for geometry-related specs.
+  # Stubs IOGate because the module is prepended and its own
+  # +terminal_width+ would shadow an instance-level method stub.
+  def stub_terminal_width(_editor, width = 80)
+    allow(Reline::IOGate).to receive(:get_screen_size).and_return([24, width])
+  end
 end
 # rubocop:enable Metrics/MethodLength, Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
